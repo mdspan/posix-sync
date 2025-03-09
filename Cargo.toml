@@ -6,3 +6,13 @@ rust-version = "1.65"
 
 [lib]
 name = "posix_sync"
+
+[dependencies]
+libc = "0.2.159"
+
+[dev-dependencies]
+# The doc examples put locks into mapped memory without hand-rolling an mmap wrapper. tempfile's
+# default getrandom feature is switched off because its current release needs a newer Rust than
+# this crate checks against.
+memmap2 = "0.9.5"
+tempfile = { version = "3.18.0", default-features = false }
