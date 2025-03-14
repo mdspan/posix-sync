@@ -2,6 +2,8 @@ use std::cell::UnsafeCell;
 use std::fmt::{self, Debug};
 use std::marker::{PhantomData, Unpin};
 use std::mem::MaybeUninit;
+#[cfg(not(target_vendor = "apple"))]
+use std::time::Duration;
 
 use libc::pthread_mutex_t;
 
@@ -9,6 +11,8 @@ use super::builders::MutexBuilder;
 use super::errors::MutexLockError;
 use super::robustness_markers::RobustnessMarker;
 use super::{AsRawUnderlying, RawMutexAlloc};
+#[cfg(not(target_vendor = "apple"))]
+use crate::utils::deadline_from_now;
 use crate::utils::Sealed;
 
 /// A mutex that owns its underlying raw mutex. Dropping the `OwnedMutex` destroys it, provided
@@ -118,6 +122,28 @@ impl<R: RobustnessMarker> OwnedMutex<R> {
     pub fn lock(&self) -> Result<R::Guard<'_>, MutexLockError> {
         let r = unsafe { libc::pthread_mutex_lock(self.as_raw_underlying()) };
         R::guard_from_libc_returnval(self, r)
+    }
+
+    /// Attempts to lock the mutex, blocking until a lock is obtained or `timeout` elapses. A lock
+    /// that could not be obtained in time is reported as `Ok(None)` rather than as an error.
+    ///
+    /// The timeout is resolved against `CLOCK_REALTIME`, which is the clock
+    /// [`pthread_mutex_timedlock`](https://man7.org/linux/man-pages/man3/pthread_mutex_timedlock.3p.html)
+    /// is defined in terms of. Stepping the system clock therefore moves the deadline.
+    ///
+    /// Not available on Apple platforms, which do not implement `pthread_mutex_timedlock`.
+    ///
+    /// # Errors
+    /// See [`MutexLockError`]
+    #[cfg_attr(docsrs, doc(cfg(not(target_vendor = "apple"))))]
+    #[cfg(not(target_vendor = "apple"))]
+    #[inline]
+    pub fn lock_for(&self, timeout: Duration) -> Result<Option<R::Guard<'_>>, MutexLockError> {
+        let deadline = deadline_from_now(libc::CLOCK_REALTIME, timeout);
+        match unsafe { libc::pthread_mutex_timedlock(self.as_raw_underlying(), &deadline) } {
+            libc::ETIMEDOUT => Ok(None),
+            e => R::guard_from_libc_returnval(self, e).map(Some),
+        }
     }
 
     /// Returns a pointer to the underlying `pthread_mutex_t`.

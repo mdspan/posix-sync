@@ -1,6 +1,10 @@
 //! Odds and ends shared by the primitives in this crate.
 
 use std::fmt;
+use std::mem::{size_of_val, MaybeUninit};
+use std::time::Duration;
+
+use libc::{clockid_t, timespec};
 
 #[allow(missing_docs)]
 pub trait Sealed {}
@@ -47,4 +51,44 @@ pub trait AsRawUnderlying: Sealed {
     type Underlying;
 
     fn as_raw_underlying(&self) -> *mut Self::Underlying;
+}
+
+/// Returns the point in time, as measured by `clock`, that lies `timeout` in the future.
+///
+/// The `pthread_*_timed*` family takes absolute deadlines, so every relative timeout in this crate
+/// has to be resolved against the clock the primitive was created with. The arithmetic saturates,
+/// which turns an absurdly long timeout into a deadline that will not realistically be reached
+/// rather than one that has already passed.
+// `tv_sec` and `tv_nsec` are `time_t` and `c_long`, which are 64-bit on some targets and 32-bit on
+// others. The casts below are redundant only on the former.
+#[allow(clippy::unnecessary_cast)]
+pub(crate) fn deadline_from_now(clock: clockid_t, timeout: Duration) -> timespec {
+    const NANOS_PER_SEC: i64 = 1_000_000_000;
+
+    let mut deadline = MaybeUninit::<timespec>::uninit();
+    // The only documented failure is an unsupported clock, and every clock id reaching this
+    // function names one the platform is known to have.
+    let r = unsafe { libc::clock_gettime(clock, deadline.as_mut_ptr()) };
+    debug_assert_eq!(r, 0);
+    let mut deadline = unsafe { deadline.assume_init() };
+
+    let mut secs = (deadline.tv_sec as i64)
+        .saturating_add(i64::try_from(timeout.as_secs()).unwrap_or(i64::MAX));
+    let mut nanos = deadline.tv_nsec as i64 + i64::from(timeout.subsec_nanos());
+    if nanos >= NANOS_PER_SEC {
+        nanos -= NANOS_PER_SEC;
+        secs = secs.saturating_add(1);
+    }
+
+    // `tv_sec` is a `time_t`, which is 32 bits wide on some targets and 64 on others. Its width
+    // is read off the field itself rather than through `libc::time_t`, which musl deprecates.
+    let tv_sec_max = if size_of_val(&deadline.tv_sec) >= 8 {
+        i64::MAX
+    } else {
+        i64::from(i32::MAX)
+    };
+
+    deadline.tv_sec = secs.min(tv_sec_max) as _;
+    deadline.tv_nsec = nanos as _;
+    deadline
 }

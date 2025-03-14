@@ -112,8 +112,8 @@
 //!
 //! # Platform support
 //!
-//! Process sharing, robust mutexes and the `Inherit` protocol are not available everywhere. See
-//! the table at the [crate root](crate#platform-support).
+//! Process sharing, robust mutexes, timed locking, the `Inherit` protocol and priority ceilings
+//! are not available everywhere. See the table at the [crate root](crate#platform-support).
 
 use std::marker::PhantomPinned;
 use std::mem::{align_of, size_of};

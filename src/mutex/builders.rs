@@ -2,6 +2,8 @@
 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+#[cfg(not(any(target_env = "musl", target_os = "android")))]
+use std::ops::RangeInclusive;
 use std::ptr;
 
 use libc::{pthread_mutex_t, pthread_mutexattr_t};
@@ -75,6 +77,26 @@ impl<R: RobustnessMarker> MutexBuilder<R> {
         self
     }
 
+    /// Sets the priority ceiling of the to-be constructed mutex, which only has an effect on a
+    /// mutex built with [`MutexProtocol::Protect`]. Values outside of
+    /// [`priority_ceiling_range`] are clamped into it.
+    /// See [`pthread_mutexattr_setprioceiling`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/pthread_mutexattr_setprioceiling.html)
+    /// for more information.
+    ///
+    /// Not available on musl or Android, neither of which implements the POSIX Thread Priority
+    /// Protection option.
+    #[cfg_attr(docsrs, doc(cfg(not(any(target_env = "musl", target_os = "android")))))]
+    #[cfg(not(any(target_env = "musl", target_os = "android")))]
+    pub fn with_priority_ceiling(mut self, ceiling: i32) -> Self {
+        let range = priority_ceiling_range();
+        let ceiling = ceiling.clamp(*range.start(), *range.end());
+        unsafe {
+            let r = ffi::pthread_mutexattr_setprioceiling(self.as_mut_ptr(), ceiling);
+            debug_assert_eq!(r, 0);
+        }
+        self
+    }
+
     /// Constructs an [`OwnedMutex`].
     pub fn build_owned(mut self) -> OwnedMutex<R> {
         let mtx = OwnedMutex::new_uninit();
@@ -111,6 +133,20 @@ impl<R: RobustnessMarker> MutexBuilder<R> {
     #[allow(dead_code)]
     pub(super) fn as_ptr(&self) -> *const pthread_mutexattr_t {
         ptr::addr_of!(self.attr)
+    }
+}
+
+/// The values [`MutexBuilder::with_priority_ceiling`] accepts, which is the priority range of the
+/// `SCHED_FIFO` policy on this platform.
+///
+/// Not available on musl or Android, neither of which implements the POSIX Thread Priority
+/// Protection option.
+#[cfg_attr(docsrs, doc(cfg(not(any(target_env = "musl", target_os = "android")))))]
+#[cfg(not(any(target_env = "musl", target_os = "android")))]
+pub fn priority_ceiling_range() -> RangeInclusive<i32> {
+    unsafe {
+        libc::sched_get_priority_min(libc::SCHED_FIFO)
+            ..=libc::sched_get_priority_max(libc::SCHED_FIFO)
     }
 }
 
@@ -238,9 +274,9 @@ pub enum MutexProtocol {
     /// ceilings of every mutex it holds that was built with this protocol, whether or not anyone
     /// is blocked on them.
     ///
-    /// Not available on musl or Android, neither of which implements the POSIX Thread Priority
-    /// Protection option: there are no ceilings there for this protocol to read, and both reject
-    /// it outright.
+    /// Set the ceilings with [`MutexBuilder::with_priority_ceiling`]. Not available on musl or
+    /// Android, neither of which implements the POSIX Thread Priority Protection option: there are
+    /// no ceilings there for this protocol to read, and both reject it outright.
     #[cfg_attr(docsrs, doc(cfg(not(any(target_env = "musl", target_os = "android")))))]
     #[cfg(not(any(target_env = "musl", target_os = "android")))]
     Protect,
@@ -332,5 +368,22 @@ mod tests {
             let builder = MutexBuilder::<Standard>::new().with_protocol(protocol);
             assert_eq!(get(&builder, getter), expected);
         }
+    }
+
+    #[cfg(not(any(target_env = "musl", target_os = "android")))]
+    #[test]
+    fn priority_ceiling_is_properly_set_by_builder() {
+        use super::priority_ceiling_range;
+
+        let getter = |attr, out| unsafe { ffi::pthread_mutexattr_getprioceiling(attr, out) };
+        let range = priority_ceiling_range();
+
+        let builder = MutexBuilder::<Standard>::new().with_priority_ceiling(*range.start());
+        assert_eq!(get(&builder, getter), *range.start());
+
+        // Out of range ceilings are clamped rather than rejected, so the attribute object is never
+        // left holding a value the platform would refuse.
+        let builder = MutexBuilder::<Standard>::new().with_priority_ceiling(i32::MAX);
+        assert_eq!(get(&builder, getter), *range.end());
     }
 }

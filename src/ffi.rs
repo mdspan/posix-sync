@@ -33,6 +33,23 @@ extern "C" {
     ) -> c_int;
 }
 
+// The priority ceiling pair belongs to the POSIX Thread Priority Protection option, which musl and
+// bionic both leave unimplemented: neither exports the symbols, so a reference to one of these is
+// a link error rather than a runtime failure. libc binds them nowhere, so they are written out
+// here for the platforms that do have them.
+#[cfg(not(any(target_env = "musl", target_os = "android")))]
+extern "C" {
+    pub fn pthread_mutexattr_setprioceiling(
+        attr: *mut pthread_mutexattr_t,
+        prioceiling: c_int,
+    ) -> c_int;
+
+    pub fn pthread_mutexattr_getprioceiling(
+        attr: *const pthread_mutexattr_t,
+        prioceiling: *mut c_int,
+    ) -> c_int;
+}
+
 // libc declares this with a `*mut` on some platforms and a `*const` on others, so this crate
 // uses its own `*const` declaration to keep the attribute getters uniform.
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]

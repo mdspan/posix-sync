@@ -8,8 +8,8 @@
 //! - **Shared memory.** Two processes mapping the same region need the lock to live inside it.
 //! - **A holder that dies.** A robust mutex hands the next locker `EOWNERDEAD`, so it can repair
 //!   the state.
-//! - **Real-time scheduling.** Priority inheritance bounds how long a low-priority holder can
-//!   stall a high-priority waiter.
+//! - **Real-time scheduling.** Priority inheritance and priority ceilings bound how long a
+//!   low-priority holder can stall a high-priority waiter.
 //! - **Portability.** Process-shared locks are specified by POSIX rather than by any one kernel,
 //!   so one implementation covers every platform that provides them. The alternative is a futex or
 //!   another OS-specific primitive, rewritten per target.
@@ -25,7 +25,7 @@
 //!
 //! | Module | Owned | Borrowed | Attributes |
 //! |--------|-------|----------|------------|
-//! | [`mutex`] | [`OwnedMutex`](mutex::OwnedMutex) | [`BorrowedMutex`](mutex::BorrowedMutex) | sharing, robustness, type, protocol |
+//! | [`mutex`] | [`OwnedMutex`](mutex::OwnedMutex) | [`BorrowedMutex`](mutex::BorrowedMutex) | sharing, robustness, type, protocol, priority ceiling |
 //!
 //! Mutexes can be process-shared, as long as the platform supports it (see the table below).
 //! There is no
@@ -38,7 +38,9 @@
 //! |---|---|---|---|---|---|---|---|---|
 //! | Process sharing | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 //! | Robust mutexes | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+//! | Timed mutex locking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 //! | Priority inheritance | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+//! | Priority ceilings | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 //!
 //! - **Process sharing.** `with_sharing` and the `MutexSharing` enum on the builder.
 //!   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export no
@@ -48,9 +50,13 @@
 //!   single process, never two processes over shared memory.
 //! - **Robust mutexes.** macOS/iOS, NetBSD, OpenBSD and Android do not implement robust mutexes
 //!   at all. DragonFly declares the robust functions but does not define them.
+//! - **Timed mutex locking.** macOS/iOS has no `pthread_mutex_timedlock`.
 //! - **Priority inheritance.** NetBSD rejects `PTHREAD_PRIO_INHERIT` with `ENOTSUP` while
 //!   accepting the other two protocols. On Android the protocol functions only exist from API
 //!   level 28, so selecting any protocol there needs a target at least that new.
+//! - **Priority ceilings.** The musl and Android C libraries leave the POSIX Thread Priority
+//!   Protection option unimplemented: neither exports `pthread_mutexattr_setprioceiling`, and
+//!   both reject `PTHREAD_PRIO_PROTECT`.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
