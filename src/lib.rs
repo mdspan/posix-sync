@@ -26,8 +26,9 @@
 //! | Module | Owned | Borrowed | Attributes |
 //! |--------|-------|----------|------------|
 //! | [`mutex`] | [`OwnedMutex`](mutex::OwnedMutex) | [`BorrowedMutex`](mutex::BorrowedMutex) | sharing, robustness, type, protocol, priority ceiling |
+//! | [`condvar`] | [`OwnedCondvar`](condvar::OwnedCondvar) | [`BorrowedCondvar`](condvar::BorrowedCondvar) | sharing, clock |
 //!
-//! Mutexes can be process-shared, as long as the platform supports it (see the table below).
+//! Both can be process-shared, as long as the platform supports it (see the table below).
 //! There is no
 //! [poisoning](https://doc.rust-lang.org/std/sync/poison/struct.Mutex.html#poisoning), which
 //! makes them `!UnwindSafe` and `!RefUnwindSafe`.
@@ -39,10 +40,11 @@
 //! | Process sharing | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 //! | Robust mutexes | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 //! | Timed mutex locking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+//! | Condvar clock selection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 //! | Priority inheritance | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 //! | Priority ceilings | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 //!
-//! - **Process sharing.** `with_sharing` and the `MutexSharing` enum on the builder.
+//! - **Process sharing.** `with_sharing` and the `*Sharing` enums on both builders.
 //!   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export no
 //!   pshared functions for mutexes or condvars at all, NetBSD's return `ENOSYS` for the shared
 //!   value, and DragonFly's reject it with `EINVAL`. Where the row is ❌, `with_sharing` and the
@@ -51,6 +53,8 @@
 //! - **Robust mutexes.** macOS/iOS, NetBSD, OpenBSD and Android do not implement robust mutexes
 //!   at all. DragonFly declares the robust functions but does not define them.
 //! - **Timed mutex locking.** macOS/iOS has no `pthread_mutex_timedlock`.
+//! - **Condvar clock selection.** macOS/iOS has no `pthread_condattr_setclock`, so a condvar
+//!   there always measures its timed waits against `CLOCK_REALTIME`.
 //! - **Priority inheritance.** NetBSD rejects `PTHREAD_PRIO_INHERIT` with `ENOTSUP` while
 //!   accepting the other two protocols. On Android the protocol functions only exist from API
 //!   level 28, so selecting any protocol there needs a target at least that new.
@@ -65,4 +69,5 @@
 pub(crate) mod ffi;
 pub(crate) mod utils;
 
+pub mod condvar;
 pub mod mutex;

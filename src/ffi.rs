@@ -60,6 +60,16 @@ extern "C" {
     ) -> c_int;
 }
 
+// libc leaves this unbound on NetBSD and OpenBSD, so it is declared here once for every platform
+// that has it rather than mixing libc's bindings with our own.
+#[cfg(not(target_vendor = "apple"))]
+extern "C" {
+    pub fn pthread_condattr_getclock(
+        attr: *const libc::pthread_condattr_t,
+        clock: *mut libc::clockid_t,
+    ) -> c_int;
+}
+
 /// The mutex protocol values, which Linux, Darwin, FreeBSD, DragonFly, NetBSD and OpenBSD all
 /// spell the same way. The unit tests below check them against libc wherever libc has an opinion.
 pub const PTHREAD_PRIO_NONE: c_int = 0;
