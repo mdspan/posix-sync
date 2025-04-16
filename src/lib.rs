@@ -27,8 +27,9 @@
 //! |--------|-------|----------|------------|
 //! | [`mutex`] | [`OwnedMutex`](mutex::OwnedMutex) | [`BorrowedMutex`](mutex::BorrowedMutex) | sharing, robustness, type, protocol, priority ceiling |
 //! | [`condvar`] | [`OwnedCondvar`](condvar::OwnedCondvar) | [`BorrowedCondvar`](condvar::BorrowedCondvar) | sharing, clock |
+//! | [`rwlock`] | [`OwnedRwLock`](rwlock::OwnedRwLock) | [`BorrowedRwLock`](rwlock::BorrowedRwLock) | sharing, reader/writer preference |
 //!
-//! Both can be process-shared, as long as the platform supports it (see the table below).
+//! All three can be process-shared, as long as the platform supports it (see the table below).
 //! There is no
 //! [poisoning](https://doc.rust-lang.org/std/sync/poison/struct.Mutex.html#poisoning), which
 //! makes them `!UnwindSafe` and `!RefUnwindSafe`.
@@ -40,11 +41,13 @@
 //! | Process sharing | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 //! | Robust mutexes | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 //! | Timed mutex locking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+//! | Timed rwlock locking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 //! | Condvar clock selection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 //! | Priority inheritance | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 //! | Priority ceilings | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+//! | Reader/writer preference | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 //!
-//! - **Process sharing.** `with_sharing` and the `*Sharing` enums on both builders.
+//! - **Process sharing.** `with_sharing` and the `*Sharing` enums on all three builders.
 //!   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export no
 //!   pshared functions for mutexes or condvars at all, NetBSD's return `ENOSYS` for the shared
 //!   value, and DragonFly's reject it with `EINVAL`. Where the row is ❌, `with_sharing` and the
@@ -53,6 +56,7 @@
 //! - **Robust mutexes.** macOS/iOS, NetBSD, OpenBSD and Android do not implement robust mutexes
 //!   at all. DragonFly declares the robust functions but does not define them.
 //! - **Timed mutex locking.** macOS/iOS has no `pthread_mutex_timedlock`.
+//! - **Timed rwlock locking.** macOS/iOS never implemented the timed rwlock functions.
 //! - **Condvar clock selection.** macOS/iOS has no `pthread_condattr_setclock`, so a condvar
 //!   there always measures its timed waits against `CLOCK_REALTIME`.
 //! - **Priority inheritance.** NetBSD rejects `PTHREAD_PRIO_INHERIT` with `ENOTSUP` while
@@ -61,6 +65,10 @@
 //! - **Priority ceilings.** The musl and Android C libraries leave the POSIX Thread Priority
 //!   Protection option unimplemented: neither exports `pthread_mutexattr_setprioceiling`, and
 //!   both reject `PTHREAD_PRIO_PROTECT`.
+//! - **Reader/writer preference.** Choosing who wins when readers and writers contend is a GNU
+//!   extension (`pthread_rwlockattr_setkind_np`) rather than part of POSIX. Android's C library
+//!   exports a variant with its own differently numbered constants, and FreeBSD declares the
+//!   functions without defining them, so this crate offers the preference on glibc alone.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
@@ -71,3 +79,4 @@ pub(crate) mod utils;
 
 pub mod condvar;
 pub mod mutex;
+pub mod rwlock;

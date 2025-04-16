@@ -79,6 +79,38 @@ pub const PTHREAD_PRIO_INHERIT: c_int = 1;
 /// priority ceilings for the protocol to read.
 pub const PTHREAD_PRIO_PROTECT: c_int = 2;
 
+// POSIX specifies the timed rwlock functions, but Darwin never implemented them.
+#[cfg(not(target_vendor = "apple"))]
+extern "C" {
+    pub fn pthread_rwlock_timedrdlock(
+        rwlock: *mut libc::pthread_rwlock_t,
+        abstime: *const libc::timespec,
+    ) -> c_int;
+
+    pub fn pthread_rwlock_timedwrlock(
+        rwlock: *mut libc::pthread_rwlock_t,
+        abstime: *const libc::timespec,
+    ) -> c_int;
+}
+
+// The reader/writer preference pair is a GNU extension. bionic exports a variant of it too, with
+// its own differently numbered constants, and FreeBSD's `pthread.h` declares the functions without
+// any library defining them, so glibc is the only place this crate can offer it. libc binds the
+// two functions for glibc, so they are re-exported rather than declared a second time; it binds
+// none of the three constants, so those are written out from glibc's `pthread.h`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use libc::{pthread_rwlockattr_getkind_np, pthread_rwlockattr_setkind_np};
+
+/// The reader/writer preference constants from glibc's `pthread.h`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub const PTHREAD_RWLOCK_PREFER_READER_NP: c_int = 0;
+/// See [`PTHREAD_RWLOCK_PREFER_READER_NP`].
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub const PTHREAD_RWLOCK_PREFER_WRITER_NP: c_int = 1;
+/// See [`PTHREAD_RWLOCK_PREFER_READER_NP`].
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub const PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP: c_int = 2;
+
 /// `PTHREAD_PROCESS_PRIVATE`, `PTHREAD_PROCESS_SHARED` and the three `*attr_setpshared` pairs, on
 /// the platforms whose libraries implement process sharing. DragonFly, NetBSD and OpenBSD do not:
 /// OpenBSD exports no pshared functions for mutexes or condvars at all, NetBSD hides its
