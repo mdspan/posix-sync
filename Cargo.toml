@@ -3,7 +3,29 @@ name = "posix-sync"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.65"
+description = "Idiomatic Rust interface for POSIX synchronisation primitives."
 license = "MIT"
+repository = "https://github.com/mdspan/posix-sync"
+documentation = "https://docs.rs/posix-sync"
+keywords = ["pthread", "posix", "mutex", "robust", "shared-memory"]
+categories = ["concurrency", "api-bindings", "os::unix-apis"]
+
+# Eight things in this crate differ between platforms, so documenting a single target would describe
+# an API that macOS, BSD and musl users do not have. Naming the targets explicitly is what makes
+# docs.rs render the rest of them. musl earns a slot of its own because it is the only one of these
+# that differs from another target sharing its operating system.
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-unknown-freebsd",
+    "x86_64-unknown-netbsd",
+]
+# Turns on `doc(cfg(...))`, which labels those items with the platforms they exist on.
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 name = "posix_sync"
