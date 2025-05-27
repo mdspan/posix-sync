@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Platforms with a GitHub-hosted runner, so the suite actually runs.
+  test:
+    name: test ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-latest }
+          - { name: macos x86-64, os: macos-13 }
+          - { name: macos aarch64, os: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-targets
+      # --all-targets skips doctests, and the module docs carry the worked examples.
+      - run: cargo test --doc
+
+  # FreeBSD, OpenBSD and NetBSD have no hosted runner, so the suite runs inside a VM. FreeBSD is
+  # the only one of the three with robust mutexes, which makes it the only place besides Linux
+  # where the EOWNERDEAD tests are compiled in at all.
+  #
+  # DragonFly is claimed too, but it has neither a runner nor a VM image, and as a tier 3 target
+  # it cannot even be compile-checked without building std, so it stays verified by hand.
+  bsd:
+    name: test ${{ matrix.os.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - name: freebsd
+            version: '14.2'
+            install: sudo pkg install -y rust
+          - name: openbsd
+            version: '7.7'
+            install: sudo pkg_add -I rust
+          - name: netbsd
+            version: '10.1'
+            install: sudo pkgin -y install rust
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust comes from the platform's own package manager on all three: rustup has no host
+      # toolchain for OpenBSD, and using the package everywhere keeps the jobs alike.
+      - name: Test on ${{ matrix.os.name }} ${{ matrix.os.version }}
+        uses: cross-platform-actions/action@v0.28.0
+        with:
+          operating_system: ${{ matrix.os.name }}
+          architecture: x86-64
+          version: ${{ matrix.os.version }}
+          shell: bash
+          run: |
+            ${{ matrix.os.install }}
+            rustc --version
+            cargo test --all-targets
+            cargo test --doc
+
+  # Targets with no runner and no VM image. Compiling is all that can be checked, which is
+  # still enough to catch a cfg that names the wrong platform.
+  cross:
+    name: check ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-linux-android
+          - x86_64-unknown-linux-musl
+          # 32-bit, so time_t is 32 bits wide and deadline_from_now takes its other branch.
+          - i686-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets --target ${{ matrix.target }}
+
+  lint:
+    name: fmt, clippy and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  # Nearly every line in this crate is an FFI call, which puts Miri out of reach: it cannot
+  # execute foreign functions. The sanitizers can, because they instrument libc itself, and
+  # they are the only tool here that sees what the pthread calls actually do to memory.
+  #
+  # Doctests are excluded because rustdoc does not pass -Zsanitizer down to them, so they
+  # fail to link against the sanitizer runtime. --all-targets covers everything but them.
+  sanitizers:
+    name: ${{ matrix.sanitizer }}sanitizer
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --all-targets
+        env:
+          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+
+  # docs.rs builds with --cfg docsrs so that doc(cfg(...)) labels the platform-gated items.
+  # Nothing else in CI compiles with that cfg set, so a mistake in one of those attributes
+  # would otherwise only show up as a broken docs.rs build after publishing.
+  docs-rs:
+    name: docs.rs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -D warnings
+
+  # Catches anything that breaks the published artifact rather than the working tree, such
+  # as a file the package would leave behind or metadata crates.io will not accept.
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo package
+
+  # Guards the rust-version field in Cargo.toml. Cargo.lock is not committed, so this
+  # resolves fresh every run and can start failing because a dependency raised its own
+  # MSRV rather than because this crate did.
+  msrv:
+    name: msrv 1.65
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.65.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets
