@@ -1,0 +1,22 @@
+version: 2
+
+updates:
+  # The workflow pins actions by major tag, which still leaves the pins to go stale across
+  # major versions. cross-platform-actions in particular is pinned exactly, since its BSD
+  # image versions move with the release.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Cargo.lock is not committed, so this only ever proposes changes to the version
+  # requirements in Cargo.toml. Raising the libc floor is the change worth watching: this
+  # crate declares the pthread entry points libc leaves out, and each libc release may make
+  # one of those declarations redundant.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
