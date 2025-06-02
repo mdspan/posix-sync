@@ -80,3 +80,10 @@ pub(crate) mod utils;
 pub mod condvar;
 pub mod mutex;
 pub mod rwlock;
+
+/// Compiles the code blocks in the README, so that the front page cannot drift from the API
+/// it advertises. `cfg(doctest)` holds only while rustdoc is collecting doctests, so this is
+/// invisible to every other build.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

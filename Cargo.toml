@@ -6,6 +6,7 @@ rust-version = "1.65"
 description = "Idiomatic Rust interface for POSIX synchronisation primitives."
 license = "MIT"
 repository = "https://github.com/mdspan/posix-sync"
+readme = "README.md"
 documentation = "https://docs.rs/posix-sync"
 keywords = ["pthread", "posix", "mutex", "robust", "shared-memory"]
 categories = ["concurrency", "api-bindings", "os::unix-apis"]
