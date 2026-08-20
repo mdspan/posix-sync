@@ -36,45 +36,53 @@ jobs:
       # --all-targets skips doctests, and the module docs carry the worked examples.
       - run: cargo test --doc
 
-  # FreeBSD, OpenBSD and NetBSD have no hosted runner, so the suite runs inside a VM. FreeBSD is
-  # the only one of the three with robust mutexes, which makes it the only place besides Linux
-  # where the EOWNERDEAD tests are compiled in at all.
-  #
-  # DragonFly is claimed too, but it has neither a runner nor a VM image, and as a tier 3 target
-  # it cannot even be compile-checked without building std, so it stays verified by hand.
+  # The BSDs have no hosted runner, so the suite runs inside a VM. FreeBSD is the only one
+  # of the four with robust mutexes, which makes it the only place besides Linux where the
+  # EOWNERDEAD tests are compiled in at all.
   bsd:
     name: test ${{ matrix.os.name }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: cpa.sh {0}
     strategy:
       fail-fast: false
       matrix:
         os:
           - name: freebsd
-            version: '14.2'
+            version: '15.1'
             install: sudo pkg install -y rust
           - name: openbsd
-            version: '7.7'
+            version: '7.9'
             install: sudo pkg_add -I rust
           - name: netbsd
-            version: '10.1'
+            version: '11.0'
             install: sudo pkgin -y install rust
+          - name: dragonflybsd
+            version: '6.4.2'
+            install: sudo pkg install -y rust
     steps:
       - uses: actions/checkout@v5
 
-      # Rust comes from the platform's own package manager on all three: rustup has no host
-      # toolchain for OpenBSD, and using the package everywhere keeps the jobs alike.
-      - name: Test on ${{ matrix.os.name }} ${{ matrix.os.version }}
-        uses: cross-platform-actions/action@v0.29.0
+      - name: Boot ${{ matrix.os.name }} ${{ matrix.os.version }}
+        uses: cross-platform-actions/action@v1.4.0
         with:
           operating_system: ${{ matrix.os.name }}
           architecture: x86-64
           version: ${{ matrix.os.version }}
           shell: bash
-          run: |
-            ${{ matrix.os.install }}
-            rustc --version
-            cargo test --all-targets
-            cargo test --doc
+
+      # Rust comes from the platform's own package manager on all four: rustup has no host
+      # toolchains for OpenBSD or DragonFly, and using the package everywhere keeps the jobs
+      # alike.
+      - name: Install Rust
+        run: ${{ matrix.os.install }}
+
+      - name: Test
+        run: |
+          rustc --version
+          cargo test --all-targets
+          cargo test --doc
 
   # Targets with no runner and no VM image. Compiling is all that can be checked, which is
   # still enough to catch a cfg that names the wrong platform.
