@@ -39,5 +39,5 @@ anyhow = "1.0.89"
 # The doc examples put locks into mapped memory without hand-rolling an mmap wrapper. tempfile's
 # default getrandom feature is switched off because its current release needs a newer Rust than
 # this crate checks against.
-memmap2 = "0.9.5"
-tempfile = { version = "3.18.0", default-features = false }
+memmap2 = "0.9.11"
+tempfile = { version = "3.27.0", default-features = false }
