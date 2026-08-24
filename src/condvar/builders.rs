@@ -186,11 +186,14 @@ mod tests {
     use crate::ffi;
 
     /// Reads an attribute back out of a builder with one of the `pthread_condattr_get*` getters.
-    fn get<F>(builder: &CondvarBuilder, getter: F) -> i32
+    /// Generic over the out parameter because `clockid_t` is not `c_int` everywhere: DragonFly
+    /// makes it `c_ulong`.
+    fn get<O, F>(builder: &CondvarBuilder, getter: F) -> O
     where
-        F: FnOnce(*const libc::pthread_condattr_t, *mut i32) -> i32,
+        O: Default,
+        F: FnOnce(*const libc::pthread_condattr_t, *mut O) -> i32,
     {
-        let mut out: i32 = -1;
+        let mut out = O::default();
         assert_eq!(getter(builder.as_ptr(), ptr::addr_of_mut!(out)), 0);
         out
     }
