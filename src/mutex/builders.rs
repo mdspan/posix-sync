@@ -83,6 +83,10 @@ impl<R: RobustnessMarker> MutexBuilder<R> {
     /// See [`pthread_mutexattr_setprioceiling`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/pthread_mutexattr_setprioceiling.html)
     /// for more information.
     ///
+    /// On FreeBSD and DragonFly the attribute object refuses to hold a ceiling while its
+    /// protocol is anything other than [`MutexProtocol::Protect`], so apply
+    /// [`with_protocol`](Self::with_protocol) first there.
+    ///
     /// Not available on musl or Android, neither of which implements the POSIX Thread Priority
     /// Protection option.
     #[cfg_attr(docsrs, doc(cfg(not(any(target_env = "musl", target_os = "android")))))]
@@ -378,12 +382,16 @@ mod tests {
         let getter = |attr, out| unsafe { ffi::pthread_mutexattr_getprioceiling(attr, out) };
         let range = priority_ceiling_range();
 
-        let builder = MutexBuilder::<Standard>::new().with_priority_ceiling(*range.start());
+        // FreeBSD and DragonFly refuse to get or set a ceiling while the protocol is not
+        // Protect, so the protocol goes in first.
+        let protect = || MutexBuilder::<Standard>::new().with_protocol(MutexProtocol::Protect);
+
+        let builder = protect().with_priority_ceiling(*range.start());
         assert_eq!(get(&builder, getter), *range.start());
 
         // Out of range ceilings are clamped rather than rejected, so the attribute object is never
         // left holding a value the platform would refuse.
-        let builder = MutexBuilder::<Standard>::new().with_priority_ceiling(i32::MAX);
+        let builder = protect().with_priority_ceiling(i32::MAX);
         assert_eq!(get(&builder, getter), *range.end());
     }
 }

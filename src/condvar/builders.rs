@@ -215,6 +215,9 @@ mod tests {
         let getter = |attr, out| unsafe { ffi::pthread_condattr_getclock(attr, out) };
 
         let default = CondvarBuilder::new();
+        // NetBSD's attribute object stores no clock until the setter puts one there, and until
+        // then its getter answers EINVAL rather than assuming CLOCK_REALTIME.
+        #[cfg(not(target_os = "netbsd"))]
         assert_eq!(get(&default, getter), libc::CLOCK_REALTIME);
         assert_eq!(default.clock, CondvarClock::Realtime);
 

@@ -60,7 +60,12 @@ jobs:
             install: sudo pkgin -y install rust
           - name: dragonflybsd
             version: '6.4.2'
-            install: sudo pkg install -y rust
+            # The Avalon mirror publishes an IPv6 address ahead of its IPv4 one, and the
+            # hosted runner cannot route IPv6, so every fetch of the catalogue dies with
+            # pkg's "No error". Holding pkg to IPv4 keeps it on the route that exists.
+            install: |
+              sudo sh -c 'echo "IP_VERSION = 4;" >> /usr/local/etc/pkg.conf'
+              sudo pkg install -y rust
     steps:
       - uses: actions/checkout@v5
 

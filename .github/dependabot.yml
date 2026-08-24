@@ -11,6 +11,12 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    # dtolnay/rust-toolchain names its refs after Rust toolchains rather than releases of
+    # the action, and it keeps branches for toolchains that are not out yet. Left to it,
+    # dependabot rewrites the msrv pin to the highest of those, and the job then asks
+    # rustup for a Rust that does not exist.
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain
 
   # Cargo.lock is not committed, so this only ever proposes changes to the version
   # requirements in Cargo.toml. Raising the libc floor is the change worth watching: this
