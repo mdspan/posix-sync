@@ -26,7 +26,8 @@ jobs:
       matrix:
         include:
           - { name: linux, os: ubuntu-latest }
-          - { name: macos x86-64, os: macos-13 }
+          # The last x86-64 macOS runner: macos-13 retired in November 2025.
+          - { name: macos x86-64, os: macos-15-intel }
           - { name: macos aarch64, os: macos-latest }
     steps:
       - uses: actions/checkout@v5
