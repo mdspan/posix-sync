@@ -30,7 +30,7 @@ jobs:
           - { name: macos x86-64, os: macos-15-intel }
           - { name: macos aarch64, os: macos-latest }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-targets
@@ -68,7 +68,7 @@ jobs:
               sudo sh -c 'echo "IP_VERSION = 4;" >> /usr/local/etc/pkg.conf'
               sudo pkg install -y rust
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Boot ${{ matrix.os.name }} ${{ matrix.os.version }}
         uses: cross-platform-actions/action@v1.4.0
@@ -104,7 +104,7 @@ jobs:
           # 32-bit, so time_t is 32 bits wide and deadline_from_now takes its other branch.
           - i686-unknown-linux-gnu
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -115,7 +115,7 @@ jobs:
     name: fmt, clippy and docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -140,7 +140,7 @@ jobs:
       matrix:
         sanitizer: [address, thread]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
@@ -156,7 +156,7 @@ jobs:
     name: docs.rs build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --no-deps
@@ -169,7 +169,7 @@ jobs:
     name: package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo package
@@ -181,7 +181,7 @@ jobs:
     name: msrv 1.65
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.65.0
       - uses: Swatinem/rust-cache@v2
       # cargo 1.65 resolves without reading rust-version, and anyhow asks for 1.68 from
