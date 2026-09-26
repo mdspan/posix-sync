@@ -54,8 +54,9 @@ carry the same example against a shared mapping, compiled wherever it applies.
 | `mutex`   | `OwnedMutex<R>`   | `BorrowedMutex<'a, R>`   | robustness, type, protocol, priority ceiling, timed locking |
 | `condvar` | `OwnedCondvar`    | `BorrowedCondvar<'a>`    | selectable clock for timed waits                            |
 | `rwlock`  | `OwnedRwLock`     | `BorrowedRwLock<'a>`     | reader/writer preference on glibc, timed locking            |
+| `barrier` | `OwnedBarrier`    | `BorrowedBarrier<'a>`    | serial thread picked out of each released group             |
 
-All three can be process-shared, as long as the platform supports it (see the table
+All four can be process-shared, as long as the platform supports it (see the table
 below). They are non-poisoning, and therefore `!UnwindSafe` and `!RefUnwindSafe`.
 
 ## Platform support
@@ -70,8 +71,9 @@ below). They are non-poisoning, and therefore `!UnwindSafe` and `!RefUnwindSafe`
 | Priority inheritance     | ✅            | ✅           | ✅      | ✅        | ❌     | ✅      | ✅        | ✅      |
 | Priority ceilings        | ✅            | ❌           | ✅      | ✅        | ✅     | ✅      | ✅        | ❌      |
 | Reader/writer preference | ✅            | ❌           | ❌      | ❌        | ❌     | ❌      | ❌        | ❌      |
+| Barriers                 | ✅            | ✅           | ✅      | ✅        | ✅     | ✅      | ❌        | ✅      |
 
-- **Process sharing**: `with_sharing` and the `*Sharing` enums on all three builders.
+- **Process sharing**: `with_sharing` and the `*Sharing` enums on all four builders.
   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export
   no pshared functions for mutexes or condvars at all, NetBSD's return `ENOSYS` for the
   shared value, and DragonFly's reject it with `EINVAL`. Where the row is ❌,
@@ -94,6 +96,9 @@ below). They are non-poisoning, and therefore `!UnwindSafe` and `!RefUnwindSafe`
   library exports a variant with its own differently numbered constants, and FreeBSD
   declares the functions without defining them, so this crate offers the preference on
   glibc alone.
+- **Barriers**: Apple platforms never implemented the POSIX Barriers option, so the
+  `barrier` module does not exist there. On Android the barrier functions only exist from
+  API level 24, so using the module there needs a target at least that new.
 
 The crate checks against Rust 1.65.
 
