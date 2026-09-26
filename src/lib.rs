@@ -1,5 +1,5 @@
-//! Rust bindings to the POSIX synchronisation primitives: mutexes, condition variables and
-//! reader/writer locks, with their attributes and RAII guards.
+//! Rust bindings to the POSIX synchronisation primitives: mutexes, condition variables,
+//! reader/writer locks and barriers, with their attributes and RAII guards.
 //!
 //! A lock can be placed at an address you choose.
 //! This is useful for embedding synchronisation primitives into mapped memory.
@@ -28,8 +28,9 @@
 //! | [`mutex`] | [`OwnedMutex`](mutex::OwnedMutex) | [`BorrowedMutex`](mutex::BorrowedMutex) | sharing, robustness, type, protocol, priority ceiling |
 //! | [`condvar`] | [`OwnedCondvar`](condvar::OwnedCondvar) | [`BorrowedCondvar`](condvar::BorrowedCondvar) | sharing, clock |
 //! | [`rwlock`] | [`OwnedRwLock`](rwlock::OwnedRwLock) | [`BorrowedRwLock`](rwlock::BorrowedRwLock) | sharing, reader/writer preference |
+//! | `barrier` | `OwnedBarrier` | `BorrowedBarrier` | sharing |
 //!
-//! All three can be process-shared, as long as the platform supports it (see the table below).
+//! All four can be process-shared, as long as the platform supports it (see the table below).
 //! There is no
 //! [poisoning](https://doc.rust-lang.org/std/sync/poison/struct.Mutex.html#poisoning), which
 //! makes them `!UnwindSafe` and `!RefUnwindSafe`.
@@ -46,8 +47,9 @@
 //! | Priority inheritance | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 //! | Priority ceilings | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 //! | Reader/writer preference | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+//! | Barriers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 //!
-//! - **Process sharing.** `with_sharing` and the `*Sharing` enums on all three builders.
+//! - **Process sharing.** `with_sharing` and the `*Sharing` enums on all four builders.
 //!   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export no
 //!   pshared functions for mutexes or condvars at all, NetBSD's return `ENOSYS` for the shared
 //!   value, and DragonFly's reject it with `EINVAL`. Where the row is ❌, `with_sharing` and the
@@ -69,6 +71,9 @@
 //!   extension (`pthread_rwlockattr_setkind_np`) rather than part of POSIX. Android's C library
 //!   exports a variant with its own differently numbered constants, and FreeBSD declares the
 //!   functions without defining them, so this crate offers the preference on glibc alone.
+//! - **Barriers.** Apple platforms never implemented the POSIX Barriers option, so the `barrier`
+//!   module does not exist there. On Android the barrier functions only exist from API level 24,
+//!   so using the module there needs a target at least that new.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
@@ -77,6 +82,9 @@
 pub(crate) mod ffi;
 pub(crate) mod utils;
 
+#[cfg_attr(docsrs, doc(cfg(not(target_vendor = "apple"))))]
+#[cfg(not(target_vendor = "apple"))]
+pub mod barrier;
 pub mod condvar;
 pub mod mutex;
 pub mod rwlock;

@@ -11,7 +11,7 @@ documentation = "https://docs.rs/posix-sync"
 keywords = ["pthread", "posix", "mutex", "robust", "shared-memory"]
 categories = ["concurrency", "api-bindings", "os::unix-apis"]
 
-# Eight things in this crate differ between platforms, so documenting a single target would describe
+# Nine things in this crate differ between platforms, so documenting a single target would describe
 # an API that macOS, BSD and musl users do not have. Naming the targets explicitly is what makes
 # docs.rs render the rest of them. musl earns a slot of its own because it is the only one of these
 # that differs from another target sharing its operating system.
@@ -32,7 +32,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "posix_sync"
 
 [dependencies]
-libc = "0.2.159"
+# 0.2.187 is the first release to give DragonFly's `pthread_barrierattr_t` its real, pointer-sized
+# type. Earlier ones make it a `c_int`, which `pthread_barrierattr_init` overruns.
+libc = "0.2.187"
 
 [dev-dependencies]
 anyhow = "1.0.89"
