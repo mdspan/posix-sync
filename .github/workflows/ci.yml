@@ -38,7 +38,7 @@ jobs:
       - run: cargo test --doc
 
   # The BSDs have no hosted runner, so the suite runs inside a VM. FreeBSD is the only one
-  # of the three with robust mutexes, which makes it the only place besides Linux where the
+  # of the four with robust mutexes, which makes it the only place besides Linux where the
   # EOWNERDEAD tests are compiled in at all.
   bsd:
     name: test ${{ matrix.os.name }}
@@ -59,22 +59,31 @@ jobs:
           - name: netbsd
             version: '11.0'
             install: sudo pkgin -y install rust
-          # DragonFly is not run at present because the nested-VM job was too flaky to keep
-          # the badge honest (the guest often fails to boot before the 240 s deadline); it
-          # may return once the image settles down.
+          - name: dragonflybsd
+            version: '6.4.2'
+            # The Avalon mirror publishes an IPv6 address ahead of its IPv4 one, and the
+            # hosted runner cannot route IPv6, so every fetch of the catalogue dies with
+            # pkg's "No error". Holding pkg to IPv4 keeps it on the route that exists.
+            install: |
+              sudo sh -c 'echo "IP_VERSION = 4;" >> /usr/local/etc/pkg.conf'
+              sudo pkg install -y rust
     steps:
       - uses: actions/checkout@v7
 
+      # DragonFly needs 1.6.0 at least. 1.5.0 stopped the guest faulting at boot on AMD
+      # runners that report STIBP always-on mode, and 1.6.0 stopped it starting a job
+      # before its network was up.
       - name: Boot ${{ matrix.os.name }} ${{ matrix.os.version }}
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@v1.6.0
         with:
           operating_system: ${{ matrix.os.name }}
           architecture: x86-64
           version: ${{ matrix.os.version }}
           shell: bash
 
-      # Rust comes from the platform's own package manager on all three: rustup has no host
-      # toolchain for OpenBSD, and using the package everywhere keeps the jobs alike.
+      # Rust comes from the platform's own package manager on all four: rustup has no host
+      # toolchains for OpenBSD or DragonFly, and using the package everywhere keeps the jobs
+      # alike.
       - name: Install Rust
         run: ${{ matrix.os.install }}
 
