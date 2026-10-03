@@ -28,7 +28,7 @@
 //! glibc's default prefers readers: one can take the lock even while a writer is waiting, so a
 //! steady stream of readers can starve a writer indefinitely. A writer-preferring lock instead
 //! blocks readers that arrive while a writer waits, which stops the starvation at the price of
-//! letting recursive read locking deadlock; `RwLockPreference` documents the three choices.
+//! letting recursive read locking deadlock; `RwLockPreference` documents the two choices.
 //!
 //! Rwlocks are constructed with [`RwLockBuilder`]:
 //!

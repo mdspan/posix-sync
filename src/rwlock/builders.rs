@@ -183,12 +183,14 @@ pub enum RwLockPreference {
     /// steady stream of readers can starve a writer indefinitely.
     #[default]
     Reader,
-    /// Nominally writer-preferring, but glibc implements it the same way as
-    /// [`Reader`](Self::Reader) in order to keep recursive read locking from deadlocking.
-    Writer,
-    /// Genuinely writer-preferring: a reader that asks for the lock while a writer is waiting
-    /// blocks. That is what stops writer starvation, and it is also why taking a read lock
-    /// recursively can deadlock.
+    // `pthread.h` also defines `PTHREAD_RWLOCK_PREFER_WRITER_NP`, which this enum deliberately
+    // leaves out. It requests writer priority but behaves the same as
+    // `PTHREAD_RWLOCK_PREFER_READER_NP`, so that a thread can take a read lock it already holds
+    // without deadlocking. Offering it would suggest a guarantee that only `WriterNonRecursive`
+    // provides.
+    /// Writers get priority: a reader that asks for the lock while a writer is waiting blocks.
+    /// That is what stops writer starvation, and it is also why taking a read lock recursively
+    /// can deadlock.
     WriterNonRecursive,
 }
 
@@ -197,7 +199,6 @@ impl From<RwLockPreference> for i32 {
     fn from(value: RwLockPreference) -> Self {
         match value {
             RwLockPreference::Reader => ffi::PTHREAD_RWLOCK_PREFER_READER_NP,
-            RwLockPreference::Writer => ffi::PTHREAD_RWLOCK_PREFER_WRITER_NP,
             RwLockPreference::WriterNonRecursive => {
                 ffi::PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
             }
@@ -247,10 +248,6 @@ mod tests {
             (
                 RwLockPreference::Reader,
                 ffi::PTHREAD_RWLOCK_PREFER_READER_NP,
-            ),
-            (
-                RwLockPreference::Writer,
-                ffi::PTHREAD_RWLOCK_PREFER_WRITER_NP,
             ),
             (
                 RwLockPreference::WriterNonRecursive,

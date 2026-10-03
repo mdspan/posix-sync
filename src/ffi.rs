@@ -97,16 +97,13 @@ extern "C" {
 // its own differently numbered constants, and FreeBSD's `pthread.h` declares the functions without
 // any library defining them, so glibc is the only place this crate can offer it. libc binds the
 // two functions for glibc, so they are re-exported rather than declared a second time; it binds
-// none of the three constants, so those are written out from glibc's `pthread.h`.
+// none of the constants, so those are written out from glibc's `pthread.h`.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub use libc::{pthread_rwlockattr_getkind_np, pthread_rwlockattr_setkind_np};
 
 /// The reader/writer preference constants from glibc's `pthread.h`.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub const PTHREAD_RWLOCK_PREFER_READER_NP: c_int = 0;
-/// See [`PTHREAD_RWLOCK_PREFER_READER_NP`].
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-pub const PTHREAD_RWLOCK_PREFER_WRITER_NP: c_int = 1;
 /// See [`PTHREAD_RWLOCK_PREFER_READER_NP`].
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub const PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP: c_int = 2;
