@@ -6,12 +6,11 @@ use std::ptr;
 use libc::{pthread_cond_t, pthread_condattr_t};
 
 use super::{BorrowedCondvar, CondvarClock, OwnedCondvar, RawCondvarAlloc};
-// Only the sharing attribute goes through `ffi`; everything else here comes straight from libc.
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 use crate::ffi;
 use crate::utils::AsRawUnderlying;
 
-/// The main entrypoint for creating condvars. Internally, it initialises a `pthread_condattr_t`
+/// The main entry point for creating condvars. Internally, it initializes a `pthread_condattr_t`
 /// and decorates it with the attributes passed in from the `Self::with_*` methods, returning the
 /// condvar after a call to [`build_owned`](Self::build_owned) or
 /// [`build_borrowed`](Self::build_borrowed).
@@ -20,9 +19,6 @@ use crate::utils::AsRawUnderlying;
 /// interpret it as a [`BorrowedCondvar`], use [`BorrowedCondvar::from_raw`].
 pub struct CondvarBuilder {
     attr: pthread_condattr_t,
-
-    /// Kept alongside the attributes because the built condvar has to remember which clock its
-    /// timed waits resolve deadlines against, and there is no portable way to ask it later.
     clock: CondvarClock,
 }
 
@@ -54,12 +50,12 @@ impl CondvarBuilder {
         self
     }
 
-    /// Sets the clock the condvar resolves the deadlines of its timed waits against.
+    /// Sets the clock the condvar uses to resolve the deadlines of its timed waits.
     /// See [`pthread_condattr_setclock`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/pthread_condattr_setclock.html)
     /// for more information.
     ///
-    /// Not available on Apple platforms, which do not implement `pthread_condattr_setclock`. A
-    /// condvar there always measures its timed waits against `CLOCK_REALTIME`.
+    /// Not available on Apple platforms, which do not implement `pthread_condattr_setclock` and
+    /// always use `CLOCK_REALTIME`.
     #[cfg_attr(docsrs, doc(cfg(not(target_vendor = "apple"))))]
     #[cfg(not(target_vendor = "apple"))]
     pub fn with_clock(mut self, clock: CondvarClock) -> Self {
@@ -80,14 +76,14 @@ impl CondvarBuilder {
 
     /// Constructs a [`BorrowedCondvar`] at a given location.
     ///
-    /// - `raw`: A pointer to uninitialised data.
+    /// - `raw`: A pointer to uninitialized data.
     ///
     /// - `memory`: A reference to a RAII object whose lifetime determines the validity of `raw`
     ///   (e.g. a struct that manages a memory map).
     ///
     /// # Safety
     /// The caller must guarantee that `raw` is correctly aligned, points to at least
-    /// [`RawCondvarAlloc::SIZE`] writable bytes, and is not already in use by an initialised
+    /// [`RawCondvarAlloc::SIZE`] writable bytes, and is not already in use by an initialized
     /// condvar.
     pub unsafe fn build_borrowed<T>(
         mut self,
@@ -122,7 +118,7 @@ impl Default for CondvarBuilder {
     fn default() -> Self {
         let mut attr = MaybeUninit::<pthread_condattr_t>::uninit();
         // # Safety
-        // Calling `assume_init()` is safe because `pthread_condattr_init` initialised the
+        // Calling `assume_init()` is safe because `pthread_condattr_init` initialized the
         // attribute object in the line above it.
         unsafe {
             let r = libc::pthread_condattr_init(attr.as_mut_ptr());
@@ -136,8 +132,6 @@ impl Default for CondvarBuilder {
 }
 
 impl Drop for CondvarBuilder {
-    /// Releases the attribute object. The condvars built from it are unaffected: `pthread_cond_init`
-    /// copies whatever it needs out of the attributes rather than holding onto them.
     fn drop(&mut self) {
         unsafe {
             let r = libc::pthread_condattr_destroy(self.as_mut_ptr());
@@ -147,10 +141,10 @@ impl Drop for CondvarBuilder {
 }
 
 /// Whether the condvar may be used from more than one process.
-/// See [pthread_condattr_getpshared](https://man7.org/linux/man-pages/man3/pthread_condattr_getpshared.3p.html)
+/// See [`pthread_condattr_getpshared`](https://man7.org/linux/man-pages/man3/pthread_condattr_getpshared.3p.html)
 /// for more information.
 ///
-/// Not available on DragonFly, NetBSD or OpenBSD, none of which implements process sharing.
+/// Not available on DragonFly, NetBSD or OpenBSD, which do not implement process sharing.
 #[cfg_attr(
     docsrs,
     doc(cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))))
@@ -158,7 +152,7 @@ impl Drop for CondvarBuilder {
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum CondvarSharing {
-    /// The condvar can not be shared across processes. Attempting to do so is undefined behaviour.
+    /// The condvar cannot be shared across processes. Attempting to do so is undefined behavior.
     #[default]
     Private,
     /// The condvar can be shared across processes. The mutex it is waited on with has to be
@@ -185,9 +179,8 @@ mod tests {
     use super::CondvarSharing;
     use crate::ffi;
 
-    /// Reads an attribute back out of a builder with one of the `pthread_condattr_get*` getters.
-    /// Generic over the out parameter because `clockid_t` is not `c_int` everywhere: DragonFly
-    /// makes it `c_ulong`.
+    /// Reads an attribute from a builder with one of the `pthread_condattr_get*` getters.
+    /// The out parameter is generic since `clockid_t` is a `c_ulong` on DragonFly.
     fn get<O, F>(builder: &CondvarBuilder, getter: F) -> O
     where
         O: Default,
@@ -218,8 +211,7 @@ mod tests {
         let getter = |attr, out| unsafe { ffi::pthread_condattr_getclock(attr, out) };
 
         let default = CondvarBuilder::new();
-        // NetBSD's attribute object stores no clock until the setter puts one there, and until
-        // then its getter answers EINVAL rather than assuming CLOCK_REALTIME.
+        // On NetBSD, the getter returns EINVAL until a clock has been set.
         #[cfg(not(target_os = "netbsd"))]
         assert_eq!(get(&default, getter), libc::CLOCK_REALTIME);
         assert_eq!(default.clock, CondvarClock::Realtime);
@@ -227,7 +219,6 @@ mod tests {
         let monotonic = CondvarBuilder::new().with_clock(CondvarClock::Monotonic);
         assert_eq!(get(&monotonic, getter), libc::CLOCK_MONOTONIC);
 
-        // The builder also has to remember the clock, since the condvar cannot be asked later.
         assert_eq!(monotonic.clock, CondvarClock::Monotonic);
     }
 }

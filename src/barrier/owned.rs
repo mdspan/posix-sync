@@ -12,12 +12,10 @@ use crate::utils::{AsRawUnderlying, Sealed};
 /// dropped. If you want to construct a barrier in shared memory for IPC, use a
 /// [`BorrowedBarrier`](crate::barrier::BorrowedBarrier) instead.
 ///
-/// Because the allocation belongs to this object and nothing outside the process can reach it, the
-/// methods are safe.
+/// Because the allocation belongs to this object and nothing outside the process can reach it,
+/// the methods are safe.
 pub struct OwnedBarrier {
     raw: HeapRawBarrier,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<*const UnsafeCell<()>>,
 }
 
@@ -44,7 +42,7 @@ impl Drop for OwnedBarrier {
     /// Calls [`pthread_barrier_destroy`](https://man7.org/linux/man-pages/man3/pthread_barrier_destroy.3p.html)
     /// on the underlying barrier.
     ///
-    /// Every waiter holds a `&self`, so by the time this runs there cannot be one left.
+    /// Every waiter borrows `self`, so no thread can be waiting on the barrier when this runs.
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -65,11 +63,11 @@ impl OwnedBarrier {
         BarrierBuilder::new().build_owned(count)
     }
 
-    /// Takes over storage that [`BarrierBuilder::build_owned`] has just initialised successfully.
+    /// Takes over storage that [`BarrierBuilder::build_owned`] has just initialized successfully.
     /// Nothing else may call this, because dropping the result destroys the barrier, and
-    /// destroying one that was never initialised is undefined.
+    /// destroying one that was never initialized is undefined.
     #[inline]
-    pub(super) fn from_initialised(raw: HeapRawBarrier) -> Self {
+    pub(super) fn from_initialized(raw: HeapRawBarrier) -> Self {
         Self {
             raw,
             _phantom: PhantomData,
@@ -81,7 +79,7 @@ impl OwnedBarrier {
     /// [`pthread_barrier_wait`](https://man7.org/linux/man-pages/man3/pthread_barrier_wait.3p.html).
     ///
     /// The barrier is ready for the next group as soon as this one has been released, so calling
-    /// `wait` again in a loop synchronises the threads at the end of every iteration.
+    /// `wait` again in a loop synchronizes the threads at the end of every iteration.
     ///
     /// # Errors
     /// See [`BarrierWaitError`]
@@ -100,8 +98,7 @@ impl OwnedBarrier {
 }
 
 /// A heap-allocated raw barrier allocation. Dropping it frees the storage without destroying the
-/// barrier, which is what lets [`BarrierBuilder::build_owned`] give up on one that failed to
-/// initialise.
+/// barrier, so [`BarrierBuilder::build_owned`] can free storage whose initialization failed.
 pub(super) struct HeapRawBarrier(*mut MaybeUninit<RawBarrierAlloc>);
 
 impl Sealed for HeapRawBarrier {}

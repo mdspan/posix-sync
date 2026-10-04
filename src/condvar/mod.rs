@@ -1,14 +1,10 @@
 //! Rust wrappers around POSIX condition variables.
 //!
-//! A condvar is always used together with a mutex: the wait releases the mutex, blocks, and
-//! re-acquires it before returning. A wait therefore takes a `&mut` to one of the
-//! [guards](crate::mutex::guards), which is how a caller proves it holds the lock. Spurious
-//! wakeups are permitted by POSIX, so a wait should be wrapped in a loop that re-checks the
-//! predicate.
+//! A wait on a condvar releases the mutex, blocks, and locks the mutex again before returning, so
+//! every wait takes a `&mut` to one of the mutex [guards](crate::mutex::guards). POSIX permits
+//! spurious wakeups, so a wait should be wrapped in a loop that re-checks the predicate.
 //!
 //! This module exposes two kinds of condvars: [`OwnedCondvar`] and [`BorrowedCondvar`].
-//! Both wrap an underlying `libc::pthread_cond_t`, the condition variable object POSIX defines,
-//! with the following differences:
 //!
 //! |                                      | **`OwnedCondvar`** | **`BorrowedCondvar`** |
 //! |--------------------------------------|--------------------|-----------------------|
@@ -17,30 +13,25 @@
 //! | Can be used for shared memory IPC?   | No                 | Yes                   |
 //! | Can be used without `unsafe`?        | Yes                | No                    |
 //!
-//! In addition, we have the following: Suppose we have a thread waiting on
-//! condvar C with mutex A. Then, a second thread attempts to wait on C with mutex B.
+//! Suppose a thread is waiting on condvar C with mutex A, and a second thread then waits on C with
+//! mutex B.
 //!
-//! - If C is an [`OwnedCondvar`], the wait with B panics, regardless of whether the
-//!   wait with A has already finished or not. This is because an `OwnedCondvar`
-//!   is tethered to the first mutex it is waited on with (mutex A in this example).
+//! - If C is an [`OwnedCondvar`], the wait with B panics, whether or not the wait with A has
+//!   finished. An `OwnedCondvar` is bound to the first mutex it is waited on with (A here).
 //!
-//! - If C is a [`BorrowedCondvar`], the wait with B is undefined behaviour *if it is
-//!   attempted while the wait with A is ongoing*. If the wait with A has finished by
-//!   the time the wait with B is attempted, then there is no issue.
+//! - If C is a [`BorrowedCondvar`], the wait with B is undefined behavior *if the wait with A is
+//!   still ongoing*. If the wait with A has finished, the wait with B is fine.
 //!
 //! In short: **for a given condvar, always use the same mutex**.
 //!
-//! Shared memory IPC
-//! needs the condvar to be built with `with_sharing(CondvarSharing::Shared)`, an option not
-//! every platform implements: see [Platform support](#platform-support).
+//! Shared memory IPC additionally needs the condvar to be built with
+//! `with_sharing(CondvarSharing::Shared)`, an option not every platform implements: see
+//! [Platform support](#platform-support).
 //!
-//!
-//! Beyond sharing, each condvar is associated with a clock
-//! (`Realtime` or `Monotonic`) used for tracking the passage of time
-//! during `wait_for`.
-//! In terms of the POSIX API, the two clocks [`CondvarClock`] offers are set through
-//! `pthread_condattr_setclock`: `Realtime` is `CLOCK_REALTIME`, the wall clock and the default,
-//! and `Monotonic` is `CLOCK_MONOTONIC`.
+//! Each condvar has a [clock](CondvarClock), which corresponds to the POSIX clock attribute (see
+//! [`pthread_condattr_setclock`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/pthread_condattr_setclock.html))
+//! and is used to resolve the deadlines of timed waits. `Realtime` is `CLOCK_REALTIME`, the
+//! default, and `Monotonic` is `CLOCK_MONOTONIC`.
 //!
 //! Condvars are constructed with [`CondvarBuilder`]:
 //!
@@ -59,8 +50,7 @@
 //!     s.spawn(|| {
 //!         let mut guard = mtx.lock().unwrap();
 //!         while !ready.load(Ordering::Acquire) {
-//!             // The mutex is released for the duration of the wait and held again on return,
-//!             // so `guard` is still good on the next trip around the loop.
+//!             // The mutex is locked again on return, so `guard` is still valid here.
 //!             let outcome = cv.wait_for(&mut guard, Duration::from_secs(5)).unwrap();
 //!             assert_eq!(outcome, WaitOutcome::Notified);
 //!         }
@@ -73,12 +63,10 @@
 //! });
 //! ```
 //!
-//! The next example puts a process-shared mutex, a process-shared condvar and the flag they
-//! guard into one memory mapped region with [`build_borrowed`](CondvarBuilder::build_borrowed),
-//! reserving [`RawCondvarAlloc::SIZE`] bytes for the condvar at an offset aligned to
-//! [`RawCondvarAlloc::ALIGN`]. The waiting side would normally be
-//! another process that maps the same file; a second thread stands in for it here, making the
-//! same calls that process would.
+//! The following example puts a process-shared mutex, a process-shared condvar and a flag into
+//! one memory mapped region with [`build_borrowed`](CondvarBuilder::build_borrowed). The condvar
+//! takes [`RawCondvarAlloc::SIZE`] bytes at an offset aligned to [`RawCondvarAlloc::ALIGN`]. Here,
+//! we use a second thread to represent what would be another process.
 //!
 //! ```
 //! # #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
@@ -98,7 +86,7 @@
 //!     (offset + align - 1) & !(align - 1)
 //! }
 //!
-//! // The mutex first, then the condvar, then the flag they guard, all in one shared mapping.
+//! // Layout: the mutex, then the condvar, then the flag.
 //! let cv_offset = align_up(RawMutexAlloc::SIZE, RawCondvarAlloc::ALIGN);
 //! let flag_offset = align_up(cv_offset + RawCondvarAlloc::SIZE, align_of::<u32>());
 //!
@@ -113,8 +101,7 @@
 //! };
 //! let cv = unsafe {
 //!     let builder = CondvarBuilder::new().with_sharing(CondvarSharing::Shared);
-//!     // Apple platforms have no pthread_condattr_setclock, so there the timed waits below
-//!     // measure their deadlines against CLOCK_REALTIME instead.
+//!     // Apple platforms lack pthread_condattr_setclock and always use CLOCK_REALTIME.
 //!     #[cfg(not(target_vendor = "apple"))]
 //!     let builder = builder.with_clock(CondvarClock::Monotonic);
 //!     builder.build_borrowed(map.as_mut_ptr().add(cv_offset) as *mut RawCondvarAlloc, &map)
@@ -123,7 +110,7 @@
 //! let flag = unsafe { map.as_mut_ptr().add(flag_offset) } as *mut u32;
 //! unsafe { flag.write_volatile(0) };
 //!
-//! // Raw pointers are not Send, so the flag's address crosses to the waiting thread as a usize.
+//! // Raw pointers are not Send, so the address is passed as a usize.
 //! let flag_addr = flag as usize;
 //! thread::scope(|s| {
 //!     s.spawn(move || {
@@ -152,18 +139,17 @@
 //! # fn main() {}
 //! ```
 //!
-//! If the condvar was initialised by another process, use [`BorrowedCondvar::from_raw`] instead
-//! of the builder. There is no portable way to ask a condvar which clock it was built with, so
-//! `from_raw` trusts the caller, and naming the wrong one silently produces the
-//! wrong timeouts:
+//! If the condvar was initialized by another process or thread, use [`BorrowedCondvar::from_raw`]
+//! instead of the builder. POSIX provides no way to query the clock of an initialized condvar, so
+//! the caller passes it in, and passing the wrong one produces the wrong timeouts:
 //!
 //! ```no_run
 //! use posix_sync::condvar::{BorrowedCondvar, CondvarClock, RawCondvarAlloc};
 //! use posix_sync::mutex::{BorrowedMutex, RawMutexAlloc, robustness_markers::Standard};
 //! # fn align_up(offset: usize, align: usize) -> usize { (offset + align - 1) & !(align - 1) }
 //!
-//! // A mapping of the file in which another process already initialised a mutex and a condvar,
-//! // laid out as in the previous example.
+//! // Another process has initialized a mutex and a condvar in this file, laid out as in the
+//! // previous example.
 //! let file = std::fs::OpenOptions::new()
 //!     .read(true)
 //!     .write(true)
@@ -175,8 +161,7 @@
 //!     BorrowedMutex::from_raw(map.as_mut_ptr() as *mut RawMutexAlloc, &map)
 //! };
 //!
-//! // The clock has to match the one the initialising process picked; assume it kept the
-//! // default.
+//! // The clock must match the one the condvar was initialized with; here, the default.
 //! let cv = unsafe {
 //!     BorrowedCondvar::from_raw(
 //!         map.as_mut_ptr().add(cv_offset) as *mut RawCondvarAlloc,
@@ -186,7 +171,7 @@
 //! };
 //!
 //! let guard = unsafe { mtx.lock()? };
-//! // ... update the state the waiters over there re-check ...
+//! // ... update the shared state ...
 //! drop(guard);
 //! unsafe { cv.notify_all()? };
 //! # Ok::<(), Box<dyn std::error::Error>>(())
@@ -194,10 +179,7 @@
 //!
 //! # Platform support
 //!
-//! Selecting a clock is not available everywhere: where `CondvarBuilder::with_clock` and
-//! `CondvarClock::Monotonic` are missing, a condvar always measures its timed waits against
-//! `CLOCK_REALTIME`. Process sharing is missing on some platforms too. See the table at the
-//! [crate root](crate#platform-support).
+//! See the table at the [crate root](crate#platform-support).
 
 use std::marker::PhantomPinned;
 use std::mem::{align_of, size_of};
@@ -223,18 +205,12 @@ pub use builders::CondvarBuilder;
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 pub use builders::CondvarSharing;
 
+/// A `pthread_cond_t` that has been made `!Unpin`.
 /// Cast to a pointer of this type when constructing a condvar from a raw pointer.
-///
-/// This is a `pthread_cond_t` that has been made `!Unpin`, because a condvar must not be
-/// relocated once it has been initialised. The two associated constants describe how much room to
-/// leave for one when carving up a shared mapping by hand.
 #[repr(transparent)]
 pub struct RawCondvarAlloc {
-    // the storage itself. it is only ever touched through a `*mut pthread_cond_t`.
     #[allow(dead_code)]
     raw: pthread_cond_t,
-
-    /// This field is here because [`pthread_cond_t`] is `Unpin`.
     _phantom: PhantomPinned,
 }
 
@@ -246,17 +222,16 @@ impl RawCondvarAlloc {
     pub const ALIGN: usize = align_of::<pthread_cond_t>();
 }
 
-/// The clock a condvar resolves the deadlines of its timed waits against.
+/// The clock a condvar uses to resolve the deadlines of its timed waits.
 /// See [`pthread_condattr_setclock`](https://man7.org/linux/man-pages/man3/pthread_condattr_setclock.3p.html)
 /// for more information.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum CondvarClock {
-    /// `CLOCK_REALTIME`. This is what POSIX specifies as the default, and it means
-    /// that setting the system time moves every outstanding deadline with it.
+    /// `CLOCK_REALTIME`, the POSIX default. Setting the system time moves every outstanding
+    /// deadline with it.
     #[default]
     Realtime,
-    /// `CLOCK_MONOTONIC`. Prefer this one unless a
-    /// deadline genuinely refers to a wall clock time.
+    /// `CLOCK_MONOTONIC`. Prefer this unless a deadline refers to a wall clock time.
     ///
     /// Not available on Apple platforms, which do not implement `pthread_condattr_setclock`.
     #[cfg_attr(docsrs, doc(cfg(not(target_vendor = "apple"))))]
@@ -277,17 +252,16 @@ impl From<CondvarClock> for clockid_t {
 /// Why a timed wait stopped waiting.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WaitOutcome {
-    /// The wait returned before the deadline. This does not promise a notification actually
-    /// happened, only that the deadline is not why the wait ended: check the predicate.
+    /// The wait returned before the deadline. The wakeup may be spurious, so check the predicate.
     Notified,
-    /// The deadline passed. The mutex is locked again either way.
+    /// The deadline passed. The mutex is locked again in both cases.
     TimedOut,
 }
 
 /// The body of every `wait`, shared by the owned and borrowed condvars.
 ///
 /// # Safety
-/// `cond` must point at an initialised condvar, and `guard` must belong to the same mutex every
+/// `cond` must point at an initialized condvar, and `guard` must belong to the same mutex every
 /// other waiter on `cond` is using.
 unsafe fn wait_on<G>(cond: *mut pthread_cond_t, guard: &mut G) -> Result<(), CondvarWaitError>
 where
@@ -302,8 +276,8 @@ where
 /// The body of every `wait_for`, shared by the owned and borrowed condvars.
 ///
 /// # Safety
-/// The same conditions as for [`wait_on`] apply, and `clock` must be the clock `cond` was built
-/// with. Resolving the deadline against any other clock quietly produces the wrong timeout.
+/// The same conditions as for [`wait_on`] apply, and `clock` must be the clock `cond` was
+/// initialized with.
 unsafe fn wait_on_for<G>(
     cond: *mut pthread_cond_t,
     clock: CondvarClock,
@@ -324,7 +298,7 @@ where
 /// The body of every `notify_one`, shared by the owned and borrowed condvars.
 ///
 /// # Safety
-/// `cond` must point at an initialised condvar.
+/// `cond` must point at an initialized condvar.
 unsafe fn notify_one_on(cond: *mut pthread_cond_t) -> Result<(), CondvarSignalError> {
     match libc::pthread_cond_signal(cond) {
         0 => Ok(()),
@@ -335,7 +309,7 @@ unsafe fn notify_one_on(cond: *mut pthread_cond_t) -> Result<(), CondvarSignalEr
 /// The body of every `notify_all`, shared by the owned and borrowed condvars.
 ///
 /// # Safety
-/// `cond` must point at an initialised condvar.
+/// `cond` must point at an initialized condvar.
 unsafe fn notify_all_on(cond: *mut pthread_cond_t) -> Result<(), CondvarSignalError> {
     match libc::pthread_cond_broadcast(cond) {
         0 => Ok(()),

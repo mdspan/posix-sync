@@ -6,35 +6,33 @@ use super::{wait_on, BarrierWaitError, BarrierWaitOutcome, RawBarrierAlloc};
 use crate::ffi::{self, pthread_barrier_t};
 use crate::utils::{AsRawUnderlying, Sealed};
 
-/// A barrier that borrows the memory for its underlying barrier. The underlying barrier will
-/// **not** be destroyed when `BorrowedBarrier` is dropped. It is the caller's responsibility to
-/// call [`destroy`](BorrowedBarrier::destroy) when the barrier is no longer needed.
+/// A barrier that borrows the memory for its underlying `pthread_barrier_t`. The underlying
+/// barrier will **not** be destroyed when `BorrowedBarrier` is dropped. It is the caller's
+/// responsibility to call [`destroy`](BorrowedBarrier::destroy) when the barrier is no longer
+/// needed.
 ///
 /// # Safety
 ///
 /// The methods of `BorrowedBarrier`, unlike those of
 /// [`OwnedBarrier`](crate::barrier::OwnedBarrier), are unsafe. This is because the underlying
 /// barrier may be in a shared memory mapping, where it may be modifiable by other processes, and
-/// calling these methods can lead to undefined behaviour if certain invariants are not upheld. Here
-/// is a non-exhaustive list of some of the situations that will lead to undefined behaviour:
+/// calling these methods can lead to undefined behavior if certain invariants are not upheld. Here
+/// is a non-exhaustive list of some of the situations that will lead to undefined behavior:
 ///
 /// - Another process destroys the barrier before your process calls `destroy`. Calling any method
 ///   on the barrier (even destroy itself) is now UB.
 /// - The barrier is destroyed while a thread in any process is still waiting on it.
-/// - Another process initialises a barrier at the same address while a thread is waiting on this
+/// - Another process initializes a barrier at the same address while a thread is waiting on this
 ///   one.
 ///
-/// There is also no recovery from a process that dies before it reaches the barrier: POSIX gives a
-/// barrier no way to report that a member of the group is gone, and the rest of the group simply
-/// blocks forever.
+/// There is also no recovery from a process that terminates before it reaches the barrier. POSIX
+/// does not define robust barriers, so the rest of the group blocks forever.
 ///
 /// For a more thorough description of what situations can result in UB, read some of the
 /// `pthread_barrier_*` pages in the
 /// [POSIX standard](https://pubs.opengroup.org/onlinepubs/9799919799/idx/ip.html).
 pub struct BorrowedBarrier<'a> {
     raw: *mut RawBarrierAlloc,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<(*const UnsafeCell<()>, &'a ())>,
 }
 
@@ -69,18 +67,18 @@ impl Debug for BorrowedBarrier<'_> {
 }
 
 impl BorrowedBarrier<'_> {
-    /// Constructs a `BorrowedBarrier` from an existing, initialised underlying barrier at a given
+    /// Constructs a `BorrowedBarrier` from an existing underlying barrier at a given
     /// location in memory.
     ///
     /// - `raw`: A pointer to an existing raw barrier. Note that, unlike
     ///   [`BarrierBuilder::build_borrowed`](crate::barrier::BarrierBuilder::build_borrowed),
-    ///   this method expects that the pointee is initialised.
+    ///   this method expects that the pointee is initialized.
     ///
     /// - `_memory`: A reference to a RAII object whose lifetime determines the validity of `raw`
     ///   (e.g. a struct that manages a memory map).
     ///
     /// # Safety
-    /// The caller must guarantee that `raw` points to a valid, initialised [`RawBarrierAlloc`]
+    /// The caller must guarantee that `raw` points to a valid, initialized [`RawBarrierAlloc`]
     /// (a.k.a. `pthread_barrier_t`).
     ///
     /// Also, read the type-level safety section.
@@ -93,11 +91,11 @@ impl BorrowedBarrier<'_> {
     }
 
     /// Calls [`pthread_barrier_destroy`](https://man7.org/linux/man-pages/man3/pthread_barrier_destroy.3p.html)
-    /// on the underlying barrier. It is safe to re-initialise another barrier at this address
+    /// on the underlying barrier. It is safe to re-initialize another barrier at this address
     /// afterwards.
     ///
     /// Failure to call this function before releasing the memory can result in resource leaks, but
-    /// will not lead to undefined behaviour.
+    /// will not lead to undefined behavior.
     ///
     /// # Safety
     /// The caller must ensure that no thread in any process is waiting on the barrier while the

@@ -19,17 +19,13 @@ use crate::utils::{AsRawUnderlying, Sealed};
 /// dropped. If you want to construct a condvar in shared memory for IPC, use a
 /// [`BorrowedCondvar`](crate::condvar::BorrowedCondvar) instead.
 ///
-/// The methods are safe because the allocation belongs to this object, and because the POSIX
-/// invariant that every concurrent waiter passes a guard belonging to the same mutex is checked
-/// at runtime rather than left to the caller.
+/// The allocation belongs to this object, and every wait checks at runtime that all waiters use
+/// the same mutex, so the methods are safe.
 pub struct OwnedCondvar {
     raw: HeapRawCondvar,
     clock: CondvarClock,
-
     /// The address of the mutex the first waiter used, or 0 if there has not been one yet.
     mutex: AtomicUsize,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<*const UnsafeCell<()>>,
 }
 
@@ -64,8 +60,6 @@ impl Default for OwnedCondvar {
 impl Drop for OwnedCondvar {
     /// Calls [`pthread_cond_destroy`](https://man7.org/linux/man-pages/man3/pthread_cond_destroy.3p.html)
     /// on the underlying condvar.
-    ///
-    /// Every waiter holds a `&self`, so by the time this runs there cannot be one left.
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -83,8 +77,8 @@ impl OwnedCondvar {
         Self::default()
     }
 
-    /// Allocates the storage without initialising it. Only [`CondvarBuilder::build_owned`], which
-    /// initialises it immediately afterwards, may call this.
+    /// Allocates the storage without initializing it. Only [`CondvarBuilder::build_owned`] may
+    /// call this.
     #[inline]
     pub(super) fn new_uninit(clock: CondvarClock) -> Self {
         Self {
@@ -95,7 +89,7 @@ impl OwnedCondvar {
         }
     }
 
-    /// The clock this condvar resolves the deadlines of its timed waits against.
+    /// The clock this condvar uses to resolve the deadlines of its timed waits.
     #[inline]
     pub fn clock(&self) -> CondvarClock {
         self.clock
@@ -121,12 +115,10 @@ impl OwnedCondvar {
         unsafe { notify_all_on(self.as_raw_underlying()) }
     }
 
-    /// Releases the mutex `guard` belongs to, blocks until this condvar is notified, and takes the
-    /// mutex again before returning. The guard is still valid afterwards, so the critical section
-    /// simply proceeds.
+    /// Unlocks the mutex `guard` belongs to, blocks until this condvar is notified, and locks the
+    /// mutex again before returning. The guard is still valid afterwards.
     ///
-    /// Wakeups are permitted to be spurious, so this should be wrapped in a loop that re-checks
-    /// the predicate:
+    /// Wakeups may be spurious, so this should be wrapped in a loop that re-checks the predicate:
     ///
     /// ```no_run
     /// # use posix_sync::condvar::OwnedCondvar;
@@ -155,7 +147,7 @@ impl OwnedCondvar {
     }
 
     /// Like [`wait`](Self::wait), but gives up once `timeout` has elapsed on
-    /// [`self.clock()`](Self::clock). The mutex is held again on return either way.
+    /// [`self.clock()`](Self::clock). The mutex is locked again on return in both cases.
     ///
     /// # Panics
     /// Panics if a previous wait on this condvar used a guard belonging to a different mutex.
@@ -183,8 +175,8 @@ impl OwnedCondvar {
         self.as_raw_underlying()
     }
 
-    /// Records which mutex this condvar is being waited on with, and rejects any later attempt to
-    /// use a different one.
+    /// Records the mutex of the first wait on this condvar, and panics if `guard` belongs to a
+    /// different one.
     fn bind_to_mutex<G: MutexGuard>(&self, guard: &G) {
         let mutex = guard.as_raw_underlying() as usize;
         match self

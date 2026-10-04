@@ -13,7 +13,7 @@ use super::{BorrowedMutex, OwnedMutex, RawMutexAlloc};
 use crate::ffi;
 use crate::utils::AsRawUnderlying;
 
-/// The main entrypoint for creating mutexes. Internally, it initialises a `pthread_mutexattr_t`
+/// The main entry point for creating mutexes. Internally, it initializes a `pthread_mutexattr_t`
 /// and decorates it with the attributes passed in from the `Self::with_*` methods, returning the
 /// mutex after a call to [`build_owned`](Self::build_owned) or [`build_borrowed`](Self::build_borrowed).
 ///
@@ -110,14 +110,14 @@ impl<R: RobustnessMarker> MutexBuilder<R> {
 
     /// Constructs a [`BorrowedMutex`] at a given location.
     ///
-    /// - `raw`: A pointer to uninitialised data.
+    /// - `raw`: A pointer to uninitialized data.
     ///
     /// - `memory`: A reference to a RAII object whose lifetime determines the validity of
     ///   `raw` (e.g. a struct that manages a memory map).
     ///
     /// # Safety
     /// The caller must guarantee that `raw` is correctly aligned, points to at least
-    /// [`RawMutexAlloc::SIZE`] writable bytes, and is not already in use by an initialised mutex.
+    /// [`RawMutexAlloc::SIZE`] writable bytes, and is not already in use by an initialized mutex.
     pub unsafe fn build_borrowed<T>(
         mut self,
         raw: *mut RawMutexAlloc,
@@ -165,13 +165,12 @@ impl<R: RobustnessMarker> Default for MutexBuilder<R> {
     fn default() -> Self {
         let mut attr = MaybeUninit::<pthread_mutexattr_t>::uninit();
         // # Safety
-        // Calling `assume_init()` is safe because `pthread_mutexattr_init` initialised the
+        // Calling `assume_init()` is safe because `pthread_mutexattr_init` initialized the
         // attribute object in the line above it.
         unsafe {
             let r = libc::pthread_mutexattr_init(attr.as_mut_ptr());
             debug_assert_eq!(r, 0);
-            // Platforms without robust mutexes have no robustness attribute to set, and on
-            // those `Standard` is the only marker that exists.
+            // On platforms without robust mutexes, `Standard` is the only marker that exists.
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             {
                 let r = libc::pthread_mutexattr_setrobust(
@@ -241,7 +240,7 @@ impl From<MutexType> for i32 {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum MutexSharing {
     /// The mutex can not be shared across processes. Attempting to do so is undefined
-    /// behaviour.
+    /// behavior.
     #[default]
     Private,
     /// The mutex can be shared across processes.
@@ -382,15 +381,13 @@ mod tests {
         let getter = |attr, out| unsafe { ffi::pthread_mutexattr_getprioceiling(attr, out) };
         let range = priority_ceiling_range();
 
-        // FreeBSD and DragonFly refuse to get or set a ceiling while the protocol is not
-        // Protect, so the protocol goes in first.
+        // FreeBSD and DragonFly refuse to get or set a ceiling while the protocol is not Protect.
         let protect = || MutexBuilder::<Standard>::new().with_protocol(MutexProtocol::Protect);
 
         let builder = protect().with_priority_ceiling(*range.start());
         assert_eq!(get(&builder, getter), *range.start());
 
-        // Out of range ceilings are clamped rather than rejected, so the attribute object is never
-        // left holding a value the platform would refuse.
+        // Out of range ceilings are clamped rather than rejected, so this is fine.
         let builder = protect().with_priority_ceiling(i32::MAX);
         assert_eq!(get(&builder, getter), *range.end());
     }

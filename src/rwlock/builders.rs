@@ -8,12 +8,11 @@ use libc::{pthread_rwlock_t, pthread_rwlockattr_t};
 use super::{BorrowedRwLock, OwnedRwLock, RawRwLockAlloc};
 use crate::utils::AsRawUnderlying;
 
-// Only the sharing attribute and the glibc-only preference go through `ffi`, and the platforms
-// without process sharing have neither.
+// `ffi` is only used for sharing and the glibc-only preference.
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 use crate::ffi;
 
-/// The main entrypoint for creating rwlocks. Internally, it initialises a `pthread_rwlockattr_t`
+/// The main way of creating rwlocks. Internally, it initializes a `pthread_rwlockattr_t`
 /// and decorates it with the attributes passed in from the `Self::with_*` methods, returning the
 /// rwlock after a call to [`build_owned`](Self::build_owned) or
 /// [`build_borrowed`](Self::build_borrowed).
@@ -52,11 +51,11 @@ impl RwLockBuilder {
         self
     }
 
-    /// Sets who wins when readers and writers contend for the to-be constructed rwlock.
+    /// Sets the preference of the to-be constructed rwlock. See [`RwLockPreference`].
     ///
-    /// This is `pthread_rwlockattr_setkind_np`, a GNU extension rather than part of POSIX. bionic
-    /// exports a variant of it with its own differently numbered constants, and FreeBSD declares
-    /// it in `pthread.h` without any library defining it, so this crate offers it on glibc alone.
+    /// Only available on glibc. bionic exports a variant of `pthread_rwlockattr_setkind_np` with
+    /// differently numbered constants, and FreeBSD declares it in `pthread.h` without any library
+    /// defining it.
     #[cfg_attr(docsrs, doc(cfg(all(target_os = "linux", target_env = "gnu"))))]
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     pub fn with_preference(mut self, preference: RwLockPreference) -> Self {
@@ -76,14 +75,14 @@ impl RwLockBuilder {
 
     /// Constructs a [`BorrowedRwLock`] at a given location.
     ///
-    /// - `raw`: A pointer to uninitialised data.
+    /// - `raw`: A pointer to uninitialized data.
     ///
     /// - `memory`: A reference to a RAII object whose lifetime determines the validity of `raw`
     ///   (e.g. a struct that manages a memory map).
     ///
     /// # Safety
     /// The caller must guarantee that `raw` is correctly aligned, points to at least
-    /// [`RawRwLockAlloc::SIZE`] writable bytes, and is not already in use by an initialised rwlock.
+    /// [`RawRwLockAlloc::SIZE`] writable bytes, and is not already in use by an initialized rwlock.
     pub unsafe fn build_borrowed<T>(
         mut self,
         raw: *mut RawRwLockAlloc,
@@ -117,7 +116,7 @@ impl Default for RwLockBuilder {
     fn default() -> Self {
         let mut attr = MaybeUninit::<pthread_rwlockattr_t>::uninit();
         // # Safety
-        // Calling `assume_init()` is safe because `pthread_rwlockattr_init` initialised the
+        // Calling `assume_init()` is safe because `pthread_rwlockattr_init` initialized the
         // attribute object in the line above it.
         unsafe {
             let r = libc::pthread_rwlockattr_init(attr.as_mut_ptr());
@@ -153,7 +152,7 @@ impl Drop for RwLockBuilder {
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum RwLockSharing {
-    /// The rwlock can not be shared across processes. Attempting to do so is undefined behaviour.
+    /// The rwlock can not be shared across processes. Attempting to do so is undefined behavior.
     #[default]
     Private,
     /// The rwlock can be shared across processes.
@@ -170,9 +169,11 @@ impl From<RwLockSharing> for i32 {
     }
 }
 
-/// Who wins when readers and writers contend for the lock.
+/// Specifies who gets the lock when a reader requests it while a writer is waiting. Either the
+/// reader takes the lock immediately, alongside any other readers, or it blocks until the waiting
+/// writer has taken and released the lock.
 ///
-/// This is a GNU extension rather than part of POSIX, which is why it is offered on glibc alone.
+/// This is a GNU extension to POSIX.
 /// See [pthread_rwlockattr_setkind_np](https://man7.org/linux/man-pages/man3/pthread_rwlockattr_setkind_np.3.html)
 /// for more information.
 #[cfg_attr(docsrs, doc(cfg(all(target_os = "linux", target_env = "gnu"))))]
@@ -183,14 +184,10 @@ pub enum RwLockPreference {
     /// steady stream of readers can starve a writer indefinitely.
     #[default]
     Reader,
-    // `pthread.h` also defines `PTHREAD_RWLOCK_PREFER_WRITER_NP`, which this enum deliberately
-    // leaves out. It requests writer priority but behaves the same as
-    // `PTHREAD_RWLOCK_PREFER_READER_NP`, so that a thread can take a read lock it already holds
-    // without deadlocking. Offering it would suggest a guarantee that only `WriterNonRecursive`
-    // provides.
-    /// Writers get priority: a reader that asks for the lock while a writer is waiting blocks.
-    /// That is what stops writer starvation, and it is also why taking a read lock recursively
-    /// can deadlock.
+    // `pthread.h` also defines `PTHREAD_RWLOCK_PREFER_WRITER_NP`, which is left out because glibc
+    // treats it the same as `PTHREAD_RWLOCK_PREFER_READER_NP`.
+    /// A reader that requests the lock while a writer is waiting blocks. This prevents writer
+    /// starvation, but a thread that takes a read lock it already holds can deadlock.
     WriterNonRecursive,
 }
 
@@ -206,8 +203,6 @@ impl From<RwLockPreference> for i32 {
     }
 }
 
-// The only builder attributes to test are sharing and the glibc-only preference, so on the
-// platforms without process sharing there is nothing left for this module to hold.
 #[cfg(test)]
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 mod tests {

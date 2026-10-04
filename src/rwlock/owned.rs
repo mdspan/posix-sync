@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::fmt::{self, Debug};
 use std::marker::{PhantomData, Unpin};
 use std::mem::MaybeUninit;
+
 #[cfg(not(target_vendor = "apple"))]
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use super::guards::{
     read_guard_from_libc_returnval, write_guard_from_libc_returnval, ReadGuard, WriteGuard,
 };
 use super::{AsRawUnderlying, RawRwLockAlloc};
+
 #[cfg(not(target_vendor = "apple"))]
 use crate::ffi;
 #[cfg(not(target_vendor = "apple"))]
@@ -20,16 +22,14 @@ use crate::utils::deadline_from_now;
 use crate::utils::Sealed;
 
 /// A rwlock that owns its underlying raw rwlock. Dropping the `OwnedRwLock` destroys it, provided
-/// nobody still holds it: destroying a held rwlock is undefined, so a guard that was leaked rather
-/// than dropped leaks the pthread object with it. If you want to construct a rwlock in shared
-/// memory for IPC, use a [`BorrowedRwLock`](crate::rwlock::BorrowedRwLock) instead.
+/// no thread still holds the lock: destroying a held rwlock is undefined, so a guard that was
+/// leaked rather than dropped leaks the pthread object with it. If you want to construct a rwlock
+/// in shared memory for IPC, use a [`BorrowedRwLock`](crate::rwlock::BorrowedRwLock) instead.
 ///
-/// Because the allocation belongs to this object and nothing outside the process can reach it, the
-/// locking methods are safe.
+/// Because the allocation belongs to this object and nothing outside the process can reach it,
+/// the locking methods are safe.
 pub struct OwnedRwLock {
     raw: HeapRawRwLock,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<*const UnsafeCell<()>>,
 }
 
@@ -66,9 +66,8 @@ impl Drop for OwnedRwLock {
     fn drop(&mut self) {
         let raw = self.as_raw_underlying();
 
-        // Destroying a held rwlock is undefined, and a guard that was leaked rather than dropped
-        // leaves one held. Taking the write lock is the only portable way to ask whether anyone
-        // still holds it, since it is the one that excludes readers too.
+        // Destroying a held rwlock is undefined, and a leaked guard leaves the rwlock held.
+        // `pthread_rwlock_trywrlock` succeeds only if no reader or writer holds it.
         unsafe {
             if libc::pthread_rwlock_trywrlock(raw) != 0 {
                 return;
@@ -89,8 +88,8 @@ impl OwnedRwLock {
         Self::default()
     }
 
-    /// Allocates the storage without initialising it. Only [`RwLockBuilder::build_owned`], which
-    /// initialises it immediately afterwards, may call this.
+    /// Allocates the storage without initializing it. Only [`RwLockBuilder::build_owned`], which
+    /// initializes it immediately afterwards, may call this.
     #[inline]
     pub(super) fn new_uninit() -> Self {
         Self {
@@ -126,12 +125,9 @@ impl OwnedRwLock {
     /// Acquires a read lock, blocking until it is available or `timeout` elapses. A lock that
     /// could not be acquired in time is reported as `Ok(None)`.
     ///
-    /// The timeout is resolved against `CLOCK_REALTIME`, which is the clock
-    /// [`pthread_rwlock_timedrdlock`](https://man7.org/linux/man-pages/man3/pthread_rwlock_timedrdlock.3p.html)
-    /// is defined in terms of. Stepping the system clock therefore moves the deadline.
+    /// The timeout is resolved against `CLOCK_REALTIME`.
     ///
-    /// Not available on Apple platforms, which do not implement the timed rwlock
-    /// functions.
+    /// Not available on Apple platforms, which do not implement `pthread_rwlock_timedrdlock`.
     ///
     /// # Errors
     /// See [`RwLockError`]
@@ -175,8 +171,7 @@ impl OwnedRwLock {
     ///
     /// The timeout is resolved against `CLOCK_REALTIME`, as for [`read_for`](Self::read_for).
     ///
-    /// Not available on Apple platforms, which do not implement the timed rwlock
-    /// functions.
+    /// Not available on Apple platforms, which do not implement `pthread_rwlock_timedwrlock`.
     ///
     /// # Errors
     /// See [`RwLockError`]

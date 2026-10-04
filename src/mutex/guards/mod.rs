@@ -10,9 +10,6 @@ use super::errors::MutexLockError;
 use crate::utils::{AsRawUnderlying, Sealed};
 
 /// Implemented by every guard in this module.
-///
-/// It exists so that a condition variable can be handed any of them without caring which lock
-/// operation produced it. This trait is sealed.
 pub trait MutexGuard: Sealed + AsRawUnderlying<Underlying = pthread_mutex_t> {
     /// Arranges for the data protected by the mutex to be marked consistent again. Which of the
     /// two moments that happens at depends on the guard: [`StandardGuard`] does it at once, while
@@ -55,8 +52,6 @@ impl AsRawUnderlying for StandardGuard<'_> {
 }
 
 impl MutexGuard for StandardGuard<'_> {
-    /// Calls `pthread_mutex_consistent` immediately, since a standard guard has no deferred
-    /// consistency state to record the request in.
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     #[inline]
     fn mark_consistent(&mut self) -> Result<(), MutexLockError> {

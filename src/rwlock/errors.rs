@@ -10,14 +10,13 @@ use crate::utils::{impl_libc_error_conversions, write_errcode};
 /// operating system for more relevant error descriptions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RwLockError {
-    /// The value specified by the rwlock does not refer to an initialised rwlock object. POSIX
-    /// recommends rather than requires reporting this, so whether it is detected is up to the
-    /// platform. It should not occur under normal circumstances.
+    /// The value specified by the rwlock does not refer to an initialized rwlock object. POSIX only
+    /// recommends reporting this, so whether it is detected is up to the platform. It should not
+    /// occur under normal circumstances.
     Invalid,
-    /// The calling thread does not hold the rwlock. Locking never reports this, because unlocking
-    /// is what the underlying `EPERM` describes and the guards here release the lock on drop
-    /// rather than through a fallible method. It reaches callers only from a raw errno converted
-    /// by hand.
+    /// The calling thread does not hold the rwlock. Only `pthread_rwlock_unlock` reports this, and
+    /// the guards call it on drop, so this variant only shows up when a raw errno is converted by
+    /// hand.
     Permission,
     /// Locking would have resulted in a deadlock: the calling thread already holds the write lock,
     /// or it holds a read lock and asked for the write lock.
@@ -47,7 +46,7 @@ impl Display for RwLockError {
         let message = match self {
             // Descriptions based on https://man7.org/linux/man-pages/man3/pthread_rwlock_rdlock.3p.html
             Self::Invalid => {
-                "The value specified by rwlock does not refer to an initialised rwlock object."
+                "The value specified by rwlock does not refer to an initialized rwlock object."
             }
             Self::Permission => "The current thread does not hold a lock on the rwlock.",
             Self::Deadlock => "A deadlock condition was detected.",

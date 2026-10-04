@@ -12,23 +12,22 @@ use super::{
 use crate::mutex::guards::MutexGuard;
 use crate::utils::{AsRawUnderlying, Sealed};
 
-/// A condvar that borrows the memory for its underlying condvar. The underlying condvar will
-/// **not** be destroyed when `BorrowedCondvar` is dropped. It is the caller's responsibility to
-/// call [`destroy`](BorrowedCondvar::destroy) when the condvar is no longer needed.
+/// A condvar that borrows the memory for its underlying `pthread_cond_t`. The underlying condvar
+/// will **not** be destroyed when `BorrowedCondvar` is dropped. It is the caller's responsibility
+/// to call [`destroy`](BorrowedCondvar::destroy) when the condvar is no longer needed.
 ///
 /// # Safety
 ///
-/// The methods of `BorrowedCondvar`, unlike those of [`OwnedCondvar`](crate::condvar::OwnedCondvar),
-/// are unsafe. This is because the underlying condvar may be in a shared memory mapping, where it
-/// may be modifiable by other processes, and calling these methods can lead to undefined behaviour
-/// if certain invariants are not upheld. Here is a non-exhaustive list of some of the situations
-/// that will lead to undefined behaviour:
+/// The methods of `BorrowedCondvar` are unsafe, unlike those of
+/// [`OwnedCondvar`](crate::condvar::OwnedCondvar). The underlying condvar may be in a shared
+/// memory mapping, where other processes can modify it, and calling these methods can lead to
+/// undefined behavior if certain invariants are not upheld. Here is a non-exhaustive list of
+/// situations that lead to undefined behavior:
 ///
 /// - Another process destroys the condvar before your process calls `destroy`. Calling any method
-///   on the condvar (even destroy itself) is now UB.
+///   on the condvar (even `destroy` itself) is now UB.
 /// - Two threads wait on the condvar at the same time with guards belonging to different mutexes.
-///   An [`OwnedCondvar`](crate::condvar::OwnedCondvar) catches this and panics, but a condvar in
-///   shared memory has no cheap way to compare mutex addresses across address spaces.
+///   An [`OwnedCondvar`](crate::condvar::OwnedCondvar) detects this and panics.
 /// - The condvar is destroyed while a thread in any process is still waiting on it.
 ///
 /// For a more thorough description of what situations can result in UB, read some of the
@@ -37,8 +36,6 @@ use crate::utils::{AsRawUnderlying, Sealed};
 pub struct BorrowedCondvar<'a> {
     raw: *mut RawCondvarAlloc,
     clock: CondvarClock,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<(*const UnsafeCell<()>, &'a ())>,
 }
 
@@ -74,21 +71,21 @@ impl Debug for BorrowedCondvar<'_> {
 }
 
 impl BorrowedCondvar<'_> {
-    /// Constructs a `BorrowedCondvar` from an existing, initialised underlying condvar at a given
+    /// Constructs a `BorrowedCondvar` from an existing underlying condvar at a given
     /// location in memory.
     ///
     /// - `raw`: A pointer to an existing raw condvar. Note that, unlike
     ///   [`CondvarBuilder::build_borrowed`](crate::condvar::CondvarBuilder::build_borrowed),
-    ///   this method expects that the pointee is initialised.
+    ///   this method expects that the pointee is initialized.
     ///
     /// - `_memory`: A reference to a RAII object whose lifetime determines the validity of `raw`
     ///   (e.g. a struct that manages a memory map).
     ///
-    /// - `clock`: The clock the condvar was initialised with. Timed waits resolve their deadlines
-    ///   against it, so naming the wrong one silently produces the wrong timeout.
+    /// - `clock`: The clock the condvar was initialized with. Passing the wrong one produces the
+    ///   wrong timeouts.
     ///
     /// # Safety
-    /// The caller must guarantee that `raw` points to a valid, initialised [`RawCondvarAlloc`]
+    /// The caller must guarantee that `raw` points to a valid, initialized [`RawCondvarAlloc`]
     /// (a.k.a. `pthread_cond_t`).
     ///
     /// Also, read the type-level safety section.
@@ -106,15 +103,15 @@ impl BorrowedCondvar<'_> {
     }
 
     /// Calls [`pthread_cond_destroy`](https://man7.org/linux/man-pages/man3/pthread_cond_destroy.3p.html)
-    /// on the underlying condvar. It is safe to re-initialise another condvar at this address
+    /// on the underlying condvar. It is safe to re-initialize another condvar at this address
     /// afterwards.
     ///
     /// Failure to call this function before releasing the memory can result in resource leaks, but
-    /// will not lead to undefined behaviour.
+    /// will not lead to undefined behavior.
     ///
     /// # Safety
     /// The caller must ensure that no thread in any process is waiting on the condvar while the
-    /// call is taking place, and that destroy is only called once.
+    /// call is taking place, and that `destroy` is only called once.
     ///
     /// Also, read the type-level safety section.
     #[inline]
@@ -125,8 +122,8 @@ impl BorrowedCondvar<'_> {
         }
     }
 
-    /// The clock this condvar resolves the deadlines of its timed waits against, as passed to
-    /// [`from_raw`](Self::from_raw) or picked by the builder.
+    /// The clock this condvar uses to resolve the deadlines of its timed waits, as passed to
+    /// [`from_raw`](Self::from_raw) or set by the builder.
     #[inline]
     pub fn clock(&self) -> CondvarClock {
         self.clock
@@ -158,11 +155,10 @@ impl BorrowedCondvar<'_> {
         notify_all_on(self.as_raw_underlying())
     }
 
-    /// Releases the mutex `guard` belongs to, blocks until this condvar is notified, and takes the
-    /// mutex again before returning.
+    /// Unlocks the mutex `guard` belongs to, blocks until this condvar is notified, and locks the
+    /// mutex again before returning. The guard is still valid afterwards.
     ///
-    /// Wakeups are permitted to be spurious, so this should be wrapped in a loop that re-checks
-    /// the predicate.
+    /// Wakeups may be spurious, so this should be wrapped in a loop that re-checks the predicate.
     ///
     /// # Safety
     /// Every thread that waits on this condvar, in every process, must pass a guard belonging to
@@ -179,7 +175,7 @@ impl BorrowedCondvar<'_> {
     }
 
     /// Like [`wait`](Self::wait), but gives up once `timeout` has elapsed on
-    /// [`self.clock()`](Self::clock). The mutex is held again on return either way.
+    /// [`self.clock()`](Self::clock). The mutex is locked again on return in both cases.
     ///
     /// # Safety
     /// The same conditions as for [`wait`](Self::wait) apply.

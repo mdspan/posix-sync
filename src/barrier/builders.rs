@@ -8,7 +8,7 @@ use super::{BarrierInitError, BorrowedBarrier, OwnedBarrier, RawBarrierAlloc};
 use crate::ffi::{self, pthread_barrier_t, pthread_barrierattr_t};
 use crate::utils::AsRawUnderlying;
 
-/// The main entrypoint for creating barriers. Internally, it initialises a `pthread_barrierattr_t`
+/// The main way of creating barriers. Internally, it initializes a `pthread_barrierattr_t`
 /// and decorates it with the attributes passed in from the `Self::with_*` methods, returning the
 /// barrier after a call to [`build_owned`](Self::build_owned) or
 /// [`build_borrowed`](Self::build_borrowed).
@@ -57,12 +57,12 @@ impl BarrierBuilder {
     pub fn build_owned(self, count: u32) -> Result<OwnedBarrier, BarrierInitError> {
         let raw = HeapRawBarrier::new();
         unsafe { initialize(raw.as_raw_underlying(), self.as_ptr(), count)? };
-        Ok(OwnedBarrier::from_initialised(raw))
+        Ok(OwnedBarrier::from_initialized(raw))
     }
 
     /// Constructs a [`BorrowedBarrier`] at a given location.
     ///
-    /// - `raw`: A pointer to uninitialised data.
+    /// - `raw`: A pointer to uninitialized data.
     ///
     /// - `memory`: A reference to a RAII object whose lifetime determines the validity of `raw`
     ///   (e.g. a struct that manages a memory map).
@@ -72,12 +72,12 @@ impl BarrierBuilder {
     ///
     /// # Safety
     /// The caller must guarantee that `raw` is correctly aligned, points to at least
-    /// [`RawBarrierAlloc::SIZE`] writable bytes, and is not already in use by an initialised
+    /// [`RawBarrierAlloc::SIZE`] writable bytes, and is not already in use by an initialized
     /// barrier.
     ///
     /// # Errors
     /// See [`BarrierInitError`]. A `count` of zero is rejected everywhere. On failure, the memory
-    /// behind `raw` is left uninitialised.
+    /// behind `raw` is left uninitialized.
     pub unsafe fn build_borrowed<T>(
         self,
         raw: *mut RawBarrierAlloc,
@@ -100,8 +100,8 @@ impl BarrierBuilder {
     }
 }
 
-/// The other primitives in this crate only assert that their initialisation succeeded. A barrier's
-/// can fail on a count the caller picked, so the error is handed back instead.
+/// Returns the error from `pthread_barrier_init`, which fails on an out of range `count`. The other
+/// primitives in this crate only assert that their initialization succeeded.
 unsafe fn initialize(
     barrier: *mut pthread_barrier_t,
     attr: *const pthread_barrierattr_t,
@@ -119,7 +119,7 @@ impl Default for BarrierBuilder {
     fn default() -> Self {
         let mut attr = MaybeUninit::<pthread_barrierattr_t>::uninit();
         // # Safety
-        // Calling `assume_init()` is safe because `pthread_barrierattr_init` initialised the
+        // Calling `assume_init()` is safe because `pthread_barrierattr_init` initialized the
         // attribute object in the line above it.
         unsafe {
             let r = ffi::pthread_barrierattr_init(attr.as_mut_ptr());
@@ -155,7 +155,7 @@ impl Drop for BarrierBuilder {
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum BarrierSharing {
-    /// The barrier can not be shared across processes. Attempting to do so is undefined behaviour.
+    /// The barrier can not be shared across processes. Attempting to do so is undefined behavior.
     #[default]
     Private,
     /// The barrier can be shared across processes.
@@ -172,8 +172,6 @@ impl From<BarrierSharing> for i32 {
     }
 }
 
-// The only builder attribute to test is sharing, so on the platforms without process sharing
-// there is nothing left for this module to hold.
 #[cfg(test)]
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 mod tests {

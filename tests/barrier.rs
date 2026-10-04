@@ -72,7 +72,7 @@ fn a_count_of_zero_is_rejected() {
 
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 #[test]
-fn shared_barrier_synchronises_processes() -> Result<()> {
+fn shared_barrier_synchronizes_processes() -> Result<()> {
     const PROCESSES: u32 = 4;
     const ROUNDS: u32 = 100;
 

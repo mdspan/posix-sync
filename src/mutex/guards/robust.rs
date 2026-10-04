@@ -1,4 +1,4 @@
-//! The guards a robust mutex can hand out, and the consistency bookkeeping that goes with them.
+//! Robust mutex guards.
 //!
 //! Only compiled where the platform actually has robust mutexes. See the
 //! [`robustness_markers`](super::super::robustness_markers) module for the list.
@@ -99,8 +99,10 @@ impl<'a> IndeterminateGuard<'a> {
     ///
     /// This is the same thing [`set_consistency_on_unlock`](Self::set_consistency_on_unlock) does
     /// on drop, done eagerly so that the rest of the critical section no longer has to carry the
-    /// distinction around. If the call fails the lock is released, since a guard that could
-    /// neither be repaired nor converted has nothing left to hold onto.
+    /// distinction around.
+    ///
+    /// If `pthread_mutex_consistent` fails, the guard is dropped, which unlocks the mutex, and the
+    /// error is returned.
     ///
     /// # Errors
     /// See [`MutexLockError`]
@@ -144,7 +146,8 @@ pub enum RobustGuardContainer<'a> {
     Standard(StandardGuard<'a>),
     /// The last owner terminated before they could unlock the mutex. Note that this is not the
     /// same as the last owner panicking, as in those cases the guard is dropped when unwinding,
-    /// unlocking the mutex (unless the last owner panicked twice before unlocking).
+    /// which unlocks the mutex. The exceptions are a panic while already unwinding and a build
+    /// with `panic = "abort"`, both of which end the process before the guard is dropped.
     Indeterminate(IndeterminateGuard<'a>),
 }
 

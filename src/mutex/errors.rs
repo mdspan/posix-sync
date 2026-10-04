@@ -16,7 +16,7 @@ pub enum MutexLockError {
     /// - The mutex was created with the protocol attribute
     ///   `PTHREAD_PRIO_PROTECT` and the calling thread's priority is higher than
     ///   the mutex's current priority ceiling.
-    /// - The value specified by the mutex does not refer to an initialised mutex object. POSIX
+    /// - The value specified by the mutex does not refer to an initialized mutex object. POSIX
     ///   recommends rather than requires reporting this, so whether it is detected is up to the
     ///   platform. It should not occur under normal circumstances.
     /// - `mark_consistent` was called through a guard whose mutex is not a robust mutex left
@@ -62,7 +62,7 @@ impl Display for MutexLockError {
                 "Either the mutex was created with the protocol attribute having the value ",
                 "PTHREAD_PRIO_PROTECT and the calling thread's priority is higher than ",
                 "the mutex's current priority ceiling, or the value specified by mutex does ",
-                "not refer to an initialised mutex object."
+                "not refer to an initialized mutex object."
             ),
             Self::Permission => "The current thread does not own the mutex.",
             Self::Deadlock => "A deadlock condition was detected.",

@@ -8,8 +8,7 @@ use libc::pthread_rwlock_t;
 use super::errors::RwLockError;
 use crate::utils::{AsRawUnderlying, Sealed};
 
-/// Unlocks the rwlock behind `raw`. Both guards go through the same libc call: `pthread_rwlock_unlock`
-/// releases whichever kind of lock the calling thread happens to hold.
+/// Unlocks the rwlock behind `raw`.
 #[inline]
 unsafe fn unlock(raw: *mut pthread_rwlock_t) {
     let r = libc::pthread_rwlock_unlock(raw);

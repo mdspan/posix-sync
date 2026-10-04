@@ -10,10 +10,9 @@ use crate::utils::{impl_libc_error_conversions, write_errcode};
 /// operating system for more relevant error descriptions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CondvarSignalError {
-    /// The value specified by the condvar does not refer to an initialised condvar object. POSIX
-    /// defines no errors for the notification functions and only recommends reporting this one,
-    /// so whether it is detected at all is up to the platform. This should not occur under normal
-    /// circumstances.
+    /// The value specified by the condvar does not refer to an initialized condvar object. POSIX
+    /// only recommends reporting this error, so not every platform detects it. This should not
+    /// occur under normal circumstances.
     Invalid,
     /// None of the above. Contains the libc error code.
     Other(i32),
@@ -44,29 +43,27 @@ impl Error for CondvarSignalError {}
 /// operating system for more relevant error descriptions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CondvarWaitError {
-    /// The deadline of a timed wait passed before the condvar was notified. The timed waits here
-    /// report that outcome as [`WaitOutcome::TimedOut`](super::WaitOutcome::TimedOut), so this
-    /// variant only shows up when a raw errno is converted by hand.
+    /// The deadline of a timed wait passed before the condvar was notified. The timed waits in
+    /// this crate return [`WaitOutcome::TimedOut`](super::WaitOutcome::TimedOut) instead, so this
+    /// variant only appears when converting a raw error code.
     TimedOut,
     /// This error can occur for several reasons:
     ///
-    /// - The deadline's nanosecond value was out of range. This is the only case POSIX requires
-    ///   reporting.
-    /// - The condvar or the mutex does not refer to an initialised object, or concurrent waits on
-    ///   the same condvar were passed guards belonging to different mutexes. POSIX recommends
-    ///   rather than requires reporting these, so whether they are detected is up to the platform.
+    /// - The deadline's nanosecond value was out of range. POSIX requires reporting this case.
+    /// - The condvar or the mutex does not refer to an initialized object, or concurrent waits on
+    ///   the same condvar used guards belonging to different mutexes. POSIX only recommends
+    ///   reporting these cases, so not every platform detects them.
     Invalid,
     /// The mutex is error-checking or robust and the calling thread does not own it. The waits in
-    /// this crate take a guard, which is proof of ownership, so this variant only shows up when a
-    /// raw errno is converted by hand.
+    /// this crate take a guard, so this variant only appears when converting a raw error code.
     Permission,
     /// The mutex is robust and its previous owner terminated while holding the lock. The wait
-    /// nevertheless returned with the mutex locked, so the guard is still good: repair the data
-    /// it protects and call `mark_consistent` on it, or every later lock will fail with
-    /// [`NotRecoverable`](crate::mutex::MutexLockError::NotRecoverable).
+    /// returned with the mutex locked, so the guard is still valid. If the protected data is
+    /// intact, or can be repaired here, call `mark_consistent` on the guard. Otherwise, every
+    /// later lock fails with [`NotRecoverable`](crate::mutex::MutexLockError::NotRecoverable).
     OwnerDead,
-    /// The mutex is robust, its previous owner died holding the lock, and nobody marked the data
-    /// consistent afterwards.
+    /// The mutex is robust, its previous owner terminated while holding the lock, and the data
+    /// was not marked consistent afterwards.
     NotRecoverable,
     /// None of the above. Contains the libc error code.
     Other(i32),
@@ -89,7 +86,7 @@ impl Display for CondvarWaitError {
             Self::Invalid => concat!(
                 "The abstime argument specified a nanosecond value less than zero or greater ",
                 "than or equal to 1000 million, OR the value specified by cond or mutex does ",
-                "not refer to an initialised object, OR different mutexes were supplied for ",
+                "not refer to an initialized object, OR different mutexes were supplied for ",
                 "concurrent operations on the same condition variable."
             ),
             Self::Permission => concat!(

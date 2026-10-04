@@ -1,8 +1,8 @@
-//! Rust bindings to the POSIX synchronisation primitives: mutexes, condition variables,
+//! Rust bindings to the POSIX synchronization primitives: mutexes, condition variables,
 //! reader/writer locks and barriers, with their attributes and RAII guards.
 //!
 //! A lock can be placed at an address you choose.
-//! This is useful for embedding synchronisation primitives into mapped memory.
+//! This is useful for embedding synchronization primitives into mapped memory.
 //! Some use cases, which aren't handled by `std::sync::Mutex`, include:
 //!
 //! - **Shared memory.** Two processes mapping the same region need the lock to live inside it.
@@ -16,7 +16,7 @@
 //! - **Relocking.** Error-checking and recursive types make a second lock on the same thread
 //!   report a deadlock or succeed.
 //!
-//! Each primitive comes in two flavours:
+//! Each primitive comes in two flavors:
 //!
 //! - An *owned* variant, which allocates its own pthread object, destroys it on drop as long as
 //!   nothing still holds it, and can be used entirely from safe code.
@@ -39,21 +39,21 @@
 //!
 //! | | Linux (glibc) | Linux (musl) | FreeBSD | DragonFly | NetBSD | OpenBSD | macOS/iOS | Android |
 //! |---|---|---|---|---|---|---|---|---|
-//! | Process sharing | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-//! | Robust mutexes | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-//! | Timed mutex locking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-//! | Timed rwlock locking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-//! | Condvar clock selection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-//! | Priority inheritance | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-//! | Priority ceilings | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-//! | Reader/writer preference | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-//! | Barriers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+//! | Process sharing | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ |
+//! | Robust mutexes | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+//! | Timed mutex locking | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+//! | Timed rwlock locking | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+//! | Condvar clock selection | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+//! | Priority inheritance | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ |
+//! | Priority ceilings | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+//! | Reader/writer preference | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+//! | Barriers | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 //!
 //! - **Process sharing.** `with_sharing` and the `*Sharing` enums on all four builders.
 //!   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export no
 //!   pshared functions for mutexes or condvars at all, NetBSD's return `ENOSYS` for the shared
-//!   value, and DragonFly's reject it with `EINVAL`. Where the row is ❌, `with_sharing` and the
-//!   `*Sharing` enums do not exist, so the locks there can only synchronise threads within a
+//!   value, and DragonFly's reject it with `EINVAL`. Where the row is ✗, `with_sharing` and the
+//!   `*Sharing` enums do not exist, so the locks there can only synchronize threads within a
 //!   single process, never two processes over shared memory.
 //! - **Robust mutexes.** macOS/iOS, NetBSD, OpenBSD and Android do not implement robust mutexes
 //!   at all. DragonFly declares the robust functions but does not define them.

@@ -1,16 +1,7 @@
-//! Declarations for the pthread entry points and constants that the `libc` crate does not bind on
-//! every platform this crate supports.
+//! Declarations for the pthread entry points and constants that the `libc` crate doesn't have.
 //!
-//! Every declaration was taken from the platform's own `pthread.h` rather than assumed, and the
-//! `cfg`s here name the platforms that actually export the symbol. A declaration that is too
-//! generous does not fail to compile: it fails to link, and only once something references it,
-//! which is why `cargo check` cannot be trusted to police this file.
-//!
-//! Being careful matters most for the constants: Darwin numbers the process-shared values
-//! differently from everybody else, so anything libc already provides is re-exported from libc
-//! instead of being written out a second time.
+//! Every declaration here was taken from the platforms' respective `pthread.h` headers.
 
-// Not every declaration is reachable from every build configuration.
 #![allow(dead_code, unused_imports)]
 
 use libc::{c_int, pthread_mutexattr_t};
@@ -19,14 +10,10 @@ use libc::{c_int, pthread_mutexattr_t};
 pub use pshared::*;
 
 extern "C" {
-    /// libc does not bind this for any platform this crate supports.
     pub fn pthread_mutexattr_gettype(attr: *const pthread_mutexattr_t, mtype: *mut c_int) -> c_int;
 
-    /// Present on every platform this crate supports, though bionic only gained it at API
-    /// level 28. libc binds it for Linux only.
     pub fn pthread_mutexattr_setprotocol(attr: *mut pthread_mutexattr_t, protocol: c_int) -> c_int;
 
-    /// See [`pthread_mutexattr_setprotocol`].
     pub fn pthread_mutexattr_getprotocol(
         attr: *const pthread_mutexattr_t,
         protocol: *mut c_int,
@@ -34,8 +21,8 @@ extern "C" {
 }
 
 // The priority ceiling pair belongs to the POSIX Thread Priority Protection option, which musl and
-// bionic both leave unimplemented: neither exports the symbols, so a reference to one of these is
-// a link error rather than a runtime failure. libc binds them nowhere, so they are written out
+// bionic do not implement: neither exports the symbols, so a reference to one of these is a link
+// error rather than a runtime failure. libc declares them for no platform, so they are written out
 // here for the platforms that do have them.
 #[cfg(not(any(target_env = "musl", target_os = "android")))]
 extern "C" {
@@ -60,8 +47,8 @@ extern "C" {
     ) -> c_int;
 }
 
-// libc leaves this unbound on NetBSD and OpenBSD, so it is declared here once for every platform
-// that has it rather than mixing libc's bindings with our own.
+// libc has no declaration of this for NetBSD and OpenBSD, so it is declared here once for every
+// platform that has it rather than mixing libc's declarations with our own.
 #[cfg(not(target_vendor = "apple"))]
 extern "C" {
     pub fn pthread_condattr_getclock(
@@ -70,16 +57,15 @@ extern "C" {
     ) -> c_int;
 }
 
-/// The mutex protocol values, which Linux, Darwin, FreeBSD, DragonFly, NetBSD and OpenBSD all
-/// spell the same way. The unit tests below check them against libc wherever libc has an opinion.
+/// The mutex protocol values, which are the same on Linux, Darwin, FreeBSD, DragonFly, NetBSD and
+/// OpenBSD. The unit tests below check them against libc wherever libc defines them.
 pub const PTHREAD_PRIO_NONE: c_int = 0;
 /// See [`PTHREAD_PRIO_NONE`].
 pub const PTHREAD_PRIO_INHERIT: c_int = 1;
-/// See [`PTHREAD_PRIO_NONE`]. bionic defines the other two but not this one, since Android has no
-/// priority ceilings for the protocol to read.
+/// See [`PTHREAD_PRIO_NONE`]. Android's bionic doesn't implement priority ceilings.
 pub const PTHREAD_PRIO_PROTECT: c_int = 2;
 
-// POSIX specifies the timed rwlock functions, but Darwin never implemented them.
+// Darwin has no timed rwlock functions.
 #[cfg(not(target_vendor = "apple"))]
 extern "C" {
     pub fn pthread_rwlock_timedrdlock(
@@ -95,9 +81,10 @@ extern "C" {
 
 // The reader/writer preference pair is a GNU extension. bionic exports a variant of it too, with
 // its own differently numbered constants, and FreeBSD's `pthread.h` declares the functions without
-// any library defining them, so glibc is the only place this crate can offer it. libc binds the
-// two functions for glibc, so they are re-exported rather than declared a second time; it binds
-// none of the constants, so those are written out from glibc's `pthread.h`.
+// any library defining them, so glibc is the only place this crate can offer it.
+//
+// libc declares the two functions for glibc, so they are re-exported rather than declared a second
+// time. libc defines none of the constants, so those are written out from glibc's `pthread.h`.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub use libc::{pthread_rwlockattr_getkind_np, pthread_rwlockattr_setkind_np};
 
@@ -108,14 +95,15 @@ pub const PTHREAD_RWLOCK_PREFER_READER_NP: c_int = 0;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub const PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP: c_int = 2;
 
-// POSIX puts barriers in an option of their own, which Darwin never implemented: its `unistd.h`
-// defines `_POSIX_BARRIERS` as -1 and its `pthread.h` declares none of the functions. libc binds
-// them for every other platform this crate supports except NetBSD and OpenBSD, so they are
-// re-exported from libc wherever it has them and written out in `barrier` below for those two.
+// Barriers belong to the optional POSIX Barriers feature, which Darwin does not implement: its
+// `unistd.h` defines `_POSIX_BARRIERS` as -1 and its `pthread.h` declares none of the functions.
+// libc declares them for every other platform this crate supports except NetBSD and OpenBSD, so
+// they are re-exported from libc wherever it has them and written out in `barrier` below for those
+// two.
 //
 // libc only got DragonFly's two types right in 0.2.187. Earlier releases make
 // `pthread_barrierattr_t` a `c_int`, which `pthread_barrierattr_init` then overruns with a
-// pointer, and that is why `Cargo.toml` asks for 0.2.187 at least.
+// pointer, and that is why the libc requirement in `Cargo.toml` is 0.2.187 or later.
 #[cfg(not(any(target_vendor = "apple", target_os = "netbsd", target_os = "openbsd")))]
 pub use libc::{
     pthread_barrier_destroy, pthread_barrier_init, pthread_barrier_t, pthread_barrier_wait,
@@ -146,7 +134,7 @@ mod barrier {
     pub type pthread_barrierattr_t = *mut c_void;
 
     /// NetBSD's `struct __pthread_barrier_st`. Nothing in this crate reads the fields, which are
-    /// only spelt out so that the size and alignment come out right. The two pointers in the
+    /// only spelled out so that the size and alignment come out right. The two pointers in the
     /// middle are the `pthread_queue_t` of waiters.
     #[cfg(target_os = "netbsd")]
     #[repr(C)]
@@ -161,7 +149,7 @@ mod barrier {
         ptb_private: *mut c_void,
     }
 
-    /// NetBSD's `struct __pthread_barrierattr_st`, spelt out for the same reason as
+    /// NetBSD's `struct __pthread_barrierattr_st`, spelled out for the same reason as
     /// [`pthread_barrier_t`].
     #[cfg(target_os = "netbsd")]
     #[repr(C)]
@@ -196,18 +184,19 @@ mod barrier {
 
 /// `PTHREAD_PROCESS_PRIVATE`, `PTHREAD_PROCESS_SHARED` and the four `*attr_setpshared` pairs, on
 /// the platforms whose libraries implement process sharing. DragonFly, NetBSD and OpenBSD do not:
-/// OpenBSD exports no pshared functions for mutexes or condvars at all, NetBSD hides its
-/// declarations behind an off-by-default macro and returns `ENOSYS` for the shared value, and
-/// DragonFly rejects it with `EINVAL`. Nothing here is compiled for those three, and neither is
-/// anything that would reference it.
+/// OpenBSD exports no pshared functions for mutexes or condvars at all, NetBSD's declarations sit
+/// behind an off-by-default macro and its setters return `ENOSYS` for the shared value, and
+/// DragonFly's setters return `EINVAL` for it. On those three, this module and everything that
+/// refers to it are compiled out.
 ///
-/// libc binds the eight functions everywhere this module is compiled, Android included, apart from
-/// the barrier pair on Darwin, which has no barriers at all. The values come from libc wherever
-/// libc has them, because Darwin numbers them differently from everybody else: `SHARED` 1 and
-/// `PRIVATE` 2, against `PRIVATE` 0 and `SHARED` 1 elsewhere. `SHARED` agrees across the two
-/// conventions, but a hardcoded `PRIVATE` would be rejected as invalid on the other family.
-/// Android is the one platform where libc binds the functions but not the values, so those are
-/// written out from bionic's `libc/include/pthread.h`.
+/// libc declares all eight functions on every platform this module covers, including Android. On
+/// Darwin, which has no barriers, it declares only the six for mutexes, condvars and rwlocks.
+/// The values come from libc wherever libc defines them, because Darwin numbers them differently
+/// from every other platform: `SHARED` 1 and `PRIVATE` 2, against `PRIVATE` 0 and `SHARED` 1
+/// elsewhere. `SHARED` agrees across the two conventions, but a hardcoded `PRIVATE` would be
+/// rejected as invalid on the other family. Android is the one platform where libc declares the
+/// functions but defines none of the values, so those are written out from bionic's
+/// `libc/include/pthread.h`.
 #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
 mod pshared {
     pub use libc::{
@@ -231,8 +220,9 @@ mod pshared {
 
 #[cfg(test)]
 mod tests {
-    /// The protocol values are written out by hand because libc does not bind them for every
-    /// platform this crate supports. Where it does bind them, they had better agree.
+    /// The protocol values are written out by hand because libc does not define them for every
+    /// platform this crate supports. This test is here to make sure our definitions are the same
+    /// as libc's.
     #[cfg(target_os = "linux")]
     #[test]
     fn protocol_constants_agree_with_libc() {

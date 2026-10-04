@@ -12,16 +12,10 @@ use crate::utils::{AsRawUnderlying, Sealed};
 
 /// Marker trait implemented by the robustness markers in this module.
 ///
-/// Robustness is a type parameter rather than a runtime attribute so that the guard type can
-/// depend on it. A robust mutex hands back a `RobustGuardContainer`, which has to be matched on
-/// before it is of any use, while a standard mutex hands back a plain [`StandardGuard`]. Neither
-/// kind of lock can be used as if it were the other by accident.
-///
-/// [`Standard`] is the only marker on the platforms without robust mutexes, so this trait has
-/// exactly one implementor there. This trait is sealed.
+/// `Robust` exists only on Linux and FreeBSD. Everywhere else [`Standard`] is the only marker,
+/// so this trait has exactly one implementor there. This trait is sealed.
 pub trait RobustnessMarker: Clone + Debug + Sealed {
-    /// The associated libc constant. Only present where the platform has robust mutexes at all;
-    /// everywhere else there is no robustness attribute to set.
+    /// The libc constant associated with this robustness marker.
     #[doc(hidden)]
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     const VALUE: i32;
@@ -43,15 +37,18 @@ pub trait RobustnessMarker: Clone + Debug + Sealed {
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 /// Marker type specifying a robust mutex.
 ///
+/// The motivation behind robust mutexes is crash-tolerance.
 /// If the owner of a robust mutex terminates without unlocking it, the next thread to lock it
-/// receives an [`Indeterminate`](RobustGuardContainer::Indeterminate) guard rather than blocking
-/// forever. That guard is the only opportunity to repair whatever the dead owner left behind:
-/// unless it is marked consistent, every subsequent lock fails with
-/// [`NotRecoverable`](MutexLockError::NotRecoverable).
+/// receives an [`Indeterminate`](RobustGuardContainer::Indeterminate) guard.
+/// That guard gives the thread an opportunity to repair anything the dead owner may have left
+/// in an invalid state. Unless the guard is marked consistent, with
+/// [`make_consistent`](IndeterminateGuard::make_consistent) or
+/// [`set_consistency_on_unlock`](IndeterminateGuard::set_consistency_on_unlock), every
+/// subsequent lock fails with [`NotRecoverable`](MutexLockError::NotRecoverable).
 ///
-/// POSIX defines the attribute and the `EOWNERDEAD` notification in
+/// See
 /// [`pthread_mutexattr_setrobust`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/pthread_mutexattr_setrobust.html),
-/// and the recovery it obliges you to perform in
+/// and
 /// [`pthread_mutex_consistent`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/pthread_mutex_consistent.html).
 #[derive(Debug, Copy, Clone)]
 pub struct Robust {}
@@ -86,8 +83,8 @@ impl RobustnessMarker for Robust {
 
 /// Marker type specifying a standard (a.k.a. stalled) mutex.
 ///
-/// If the owner of a stalled mutex terminates without unlocking it, everyone waiting on it stays
-/// blocked. This is what `std::sync::Mutex` does, minus the poisoning.
+/// If the owner of a standard mutex terminates without unlocking it, other threads
+/// waiting on it remain blocked. This is the behavior of `std::sync::Mutex` (minus the poisoning).
 #[derive(Debug, Copy, Clone)]
 pub struct Standard {}
 

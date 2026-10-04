@@ -13,17 +13,17 @@ use super::{AsRawUnderlying, RawMutexAlloc};
 use crate::utils::deadline_from_now;
 use crate::utils::Sealed;
 
-/// A mutex that borrows the memory for its underlying mutex. The underlying mutex will **not** be
-/// destroyed when `BorrowedMutex` is dropped. It is the caller's responsibility to call
-/// [`destroy`](BorrowedMutex::destroy) when the mutex is no longer needed.
+/// A mutex that borrows the memory for its underlying `pthread_mutex_t`. The underlying mutex
+/// will **not** be destroyed when `BorrowedMutex` is dropped. It is the caller's responsibility to
+/// call [`destroy`](BorrowedMutex::destroy) when the mutex is no longer needed.
 ///
 /// # Safety
 ///
 /// The methods of `BorrowedMutex`, unlike those of [`OwnedMutex`](crate::mutex::OwnedMutex), are
 /// unsafe. This is because the underlying mutex may be in a shared memory mapping, where it may
-/// be modifiable by other processes, and calling these methods can lead to undefined behaviour if
+/// be modifiable by other processes, and calling these methods can lead to undefined behavior if
 /// certain invariants are not upheld. Here is a non-exhaustive list of some of the situations that
-/// will lead to undefined behaviour:
+/// will lead to undefined behavior:
 ///
 /// - Another process destroys the mutex before your process calls `destroy`. Calling any method on
 ///   the mutex (even destroy itself) is now UB.
@@ -34,8 +34,6 @@ use crate::utils::Sealed;
 /// pages in the [POSIX standard](https://pubs.opengroup.org/onlinepubs/9799919799/idx/ip.html).
 pub struct BorrowedMutex<'a, R: RobustnessMarker> {
     raw: *mut RawMutexAlloc,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<(*const UnsafeCell<R>, &'a ())>,
 }
 
@@ -70,21 +68,19 @@ impl<R: RobustnessMarker> Debug for BorrowedMutex<'_, R> {
 }
 
 impl<R: RobustnessMarker> BorrowedMutex<'_, R> {
-    /// Constructs a `BorrowedMutex` from an existing, initialised underlying mutex at a given
+    /// Constructs a `BorrowedMutex` from an existing underlying mutex at a given
     /// location in memory.
     ///
     /// - `raw`: A pointer to an existing raw mutex. Note that, unlike
     ///   [`MutexBuilder::build_borrowed`](crate::mutex::MutexBuilder::build_borrowed),
-    ///   this method expects that the pointee is initialised.
+    ///   this method expects that the pointee is initialized.
     ///
     /// - `_memory`: A reference to a RAII object whose lifetime determines the validity of
     ///   `raw` (e.g. a struct that manages a memory map).
     ///
     /// # Safety
-    /// The caller must guarantee that `raw` points to a valid, initialised [`RawMutexAlloc`]
-    /// (a.k.a. `pthread_mutex_t`) whose robustness attribute matches `R`. Getting the robustness
-    /// wrong does not corrupt anything by itself, but it does mean the guard type is lying about
-    /// which outcomes are possible.
+    /// The caller must guarantee that `raw` points to a valid, initialized [`RawMutexAlloc`]
+    /// (a.k.a. `pthread_mutex_t`) whose robustness attribute matches `R`.
     ///
     /// Also, read the type-level safety section.
     #[inline]
@@ -96,11 +92,11 @@ impl<R: RobustnessMarker> BorrowedMutex<'_, R> {
     }
 
     /// Calls [`pthread_mutex_destroy`](https://man7.org/linux/man-pages/man3/pthread_mutex_destroy.3p.html)
-    /// on the underlying mutex. It is safe to re-initialise another mutex at this address
+    /// on the underlying mutex. It is safe to re-initialize another mutex at this address
     /// afterwards.
     ///
     /// Failure to call this function before destroying the mutex can result in resource leaks,
-    /// but will not lead to undefined behaviour.
+    /// but will not lead to undefined behavior.
     ///
     /// # Safety
     /// The caller must ensure that there is no way for the mutex
@@ -110,7 +106,7 @@ impl<R: RobustnessMarker> BorrowedMutex<'_, R> {
     /// Moreover, the caller must ensure that destroy is only called once.
     ///
     /// Attempting to use the mutex after it has been destroyed or destroying the same mutex twice
-    /// is undefined behaviour. You can, however, safely create a new mutex at the same address
+    /// is undefined behavior. You can, however, safely create a new mutex at the same address
     /// after destroying the old one.
     ///
     /// Also, read the type-level safety section.
@@ -130,7 +126,7 @@ impl<R: RobustnessMarker> BorrowedMutex<'_, R> {
     /// This method is unsafe because the backing mutex may be in shared memory and modifiable by
     /// many processes, where it can potentially be left in an invalid state. As long as processes
     /// only modify the mutex through libc's `pthread*` functions and don't cause any undefined
-    /// behaviour on their own such as double unlocking or double locking (unless the mutex is
+    /// behavior on their own such as double unlocking or double locking (unless the mutex is
     /// recursive), it should generally be safe to call this function.
     ///
     /// Also, read the type-level safety section.
@@ -151,7 +147,7 @@ impl<R: RobustnessMarker> BorrowedMutex<'_, R> {
     /// This method is unsafe because the backing mutex may be in shared memory and modifiable by
     /// many processes, where it can potentially be left in an invalid state. As long as processes
     /// only modify the mutex through libc's `pthread*` functions and don't cause any undefined
-    /// behaviour on their own such as double unlocking or double locking (unless the mutex is
+    /// behavior on their own such as double unlocking or double locking (unless the mutex is
     /// recursive), it should generally be safe to call this function.
     ///
     /// Also, read the type-level safety section.

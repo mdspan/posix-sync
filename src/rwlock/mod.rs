@@ -1,8 +1,6 @@
 //! Rust wrappers around POSIX reader/writer locks.
 //!
 //! This module exposes two kinds of rwlocks: [`OwnedRwLock`] and [`BorrowedRwLock`].
-//! Both wrap an underlying `libc::pthread_rwlock_t`, the reader/writer lock object POSIX defines,
-//! but differ in the following ways:
 //!
 //! |                                     | **`OwnedRwLock`** | **`BorrowedRwLock`** |
 //! |-------------------------------------|-------------------|----------------------|
@@ -11,24 +9,20 @@
 //! | Can be used for shared memory IPC?  | No                | Yes                  |
 //! | Can be used without `unsafe`?       | Yes               | No                   |
 //!
-//! Neither poisons. Shared memory IPC
-//! additionally needs the rwlock to be built with `with_sharing(RwLockSharing::Shared)`, an
-//! option not every platform implements: see [Platform support](#platform-support).
+//! The rwlocks in this module don't poison, which makes them `!UnwindSafe` and `!RefUnwindSafe`.
+//! Shared memory IPC additionally needs the rwlock to be built with
+//! `with_sharing(RwLockSharing::Shared)`, which not every platform implements: see
+//! [Platform support](#platform-support).
 //!
-//! Unlike mutexes, there is no robustness attribute for rwlocks in POSIX, meaning that
-//! if a reader/writer dies before releasing the lock, the rwlock will be stuck in
-//! that state permanently.
+//! In contrast with mutexes, the POSIX standard does not define robust rwlocks.
 //!
-//! Beyond sharing, a rwlock has a preference: who to prefer when readers and writers contend. POSIX
-//! only defines this for threads running under the realtime scheduling policies; everywhere else it
-//! leaves the outcome to the implementation. glibc fills the gap with an extension of its own,
-//! `pthread_rwlockattr_setkind_np`, which [`RwLockBuilder`] exposes as `with_preference` on
-//! glibc alone.
+//! On glibc, rwlocks also have a preference, which specifies who gets the lock when a reader
+//! requests it while a writer is waiting. POSIX defines this only for threads running under the
+//! realtime scheduling policies and leaves every other case to the implementation. The preference
+//! is set with `with_preference`, which corresponds to the GNU extension
+//! [`pthread_rwlockattr_setkind_np`](https://man7.org/linux/man-pages/man3/pthread_rwlockattr_setkind_np.3.html).
 //!
-//! glibc's default prefers readers: one can take the lock even while a writer is waiting, so a
-//! steady stream of readers can starve a writer indefinitely. A writer-preferring lock instead
-//! blocks readers that arrive while a writer waits, which stops the starvation at the price of
-//! letting recursive read locking deadlock; `RwLockPreference` documents the two choices.
+//! The variants of `RwLockPreference` document the behavior of each preference.
 //!
 //! Rwlocks are constructed with [`RwLockBuilder`]:
 //!
@@ -49,11 +43,11 @@
 //! # Ok::<(), posix_sync::rwlock::RwLockError>(())
 //! ```
 //!
-//! The next example puts a process-shared rwlock and the value it guards into one memory mapped
-//! region with [`build_borrowed`](RwLockBuilder::build_borrowed), reserving
+//! The following example puts a process-shared rwlock and the value it guards into one memory
+//! mapped region with [`build_borrowed`](RwLockBuilder::build_borrowed), reserving
 //! [`RawRwLockAlloc::SIZE`] bytes for the lock at an offset aligned to [`RawRwLockAlloc::ALIGN`].
-//! The writer and the readers would normally be separate processes mapping the same file; here a
-//! single thread stands in for all of them, making the same calls they would.
+//! In practice the writer and the readers would be separate processes mapping the same file. Here
+//! a single thread makes the same calls.
 //!
 //! ```
 //! # #[cfg(not(any(target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
@@ -99,13 +93,13 @@
 //! # fn main() {}
 //! ```
 //!
-//! If the rwlock was initialised by another process, use [`BorrowedRwLock::from_raw`] instead of
-//! the builder:
+//! If the rwlock was initialized by another process or thread, use [`BorrowedRwLock::from_raw`]
+//! instead of the builder:
 //!
 //! ```no_run
 //! use posix_sync::rwlock::{BorrowedRwLock, RawRwLockAlloc};
 //!
-//! // A mapping of the file in which another process already initialised a rwlock.
+//! // A mapping of the file in which another process already initialized a rwlock.
 //! let file = std::fs::OpenOptions::new()
 //!     .read(true)
 //!     .write(true)
@@ -120,7 +114,6 @@
 //!
 //! # Platform support
 //!
-//! Process sharing, timed locking and the reader/writer preference are not available everywhere.
 //! See the table at the [crate root](crate#platform-support).
 
 use std::marker::PhantomPinned;
@@ -152,16 +145,11 @@ pub use builders::RwLockPreference;
 
 /// Cast to a pointer of this type when constructing a rwlock from a raw pointer.
 ///
-/// This is a `pthread_rwlock_t` that has been made `!Unpin`, because a rwlock must not be
-/// relocated once it has been initialised. The two associated constants describe how much room to
-/// leave for one when carving up a shared mapping by hand.
+/// This is a `pthread_rwlock_t` that has been made `!Unpin`.
 #[repr(transparent)]
 pub struct RawRwLockAlloc {
-    // the storage itself. it is only ever touched through a `*mut pthread_rwlock_t`.
     #[allow(dead_code)]
     raw: pthread_rwlock_t,
-
-    /// This field is here because [`pthread_rwlock_t`] is `Unpin`.
     _phantom: PhantomPinned,
 }
 

@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::fmt::{self, Debug};
 use std::marker::{PhantomData, Unpin};
 use std::mem::MaybeUninit;
+
 #[cfg(not(target_vendor = "apple"))]
 use std::time::Duration;
 
@@ -11,6 +12,7 @@ use super::builders::MutexBuilder;
 use super::errors::MutexLockError;
 use super::robustness_markers::RobustnessMarker;
 use super::{AsRawUnderlying, RawMutexAlloc};
+
 #[cfg(not(target_vendor = "apple"))]
 use crate::utils::deadline_from_now;
 use crate::utils::Sealed;
@@ -24,8 +26,6 @@ use crate::utils::Sealed;
 /// the locking methods are safe.
 pub struct OwnedMutex<R: RobustnessMarker> {
     raw: HeapRawMutex,
-
-    /// The `*const UnsafeCell` is to prevent the type from being `UnwindSafe` and `RefUnwindSafe`.
     _phantom: PhantomData<*const UnsafeCell<R>>,
 }
 
@@ -71,7 +71,7 @@ impl<R: RobustnessMarker> Drop for OwnedMutex<R> {
                     let r = libc::pthread_mutex_unlock(raw);
                     debug_assert_eq!(r, 0);
                 }
-                // A robust mutex nobody can lock again has no owner left to disturb either.
+                // This is the unrecoverable robust mutex case; nothing needs to happen.
                 libc::ENOTRECOVERABLE => {}
                 _ => return,
             }
@@ -90,8 +90,8 @@ impl<R: RobustnessMarker> OwnedMutex<R> {
         Self::default()
     }
 
-    /// Allocates the storage without initialising it. Only [`MutexBuilder::build_owned`], which
-    /// initialises it immediately afterwards, may call this.
+    /// Allocates the storage without initializing it. Only [`MutexBuilder::build_owned`], which
+    /// initializes it immediately afterwards, may call this.
     #[inline]
     pub(super) fn new_uninit() -> Self {
         Self {
@@ -127,9 +127,9 @@ impl<R: RobustnessMarker> OwnedMutex<R> {
     /// Attempts to lock the mutex, blocking until a lock is obtained or `timeout` elapses. A lock
     /// that could not be obtained in time is reported as `Ok(None)` rather than as an error.
     ///
-    /// The timeout is resolved against `CLOCK_REALTIME`, which is the clock
+    /// The timeout is resolved against `CLOCK_REALTIME`, which is what
     /// [`pthread_mutex_timedlock`](https://man7.org/linux/man-pages/man3/pthread_mutex_timedlock.3p.html)
-    /// is defined in terms of. Stepping the system clock therefore moves the deadline.
+    /// uses.
     ///
     /// Not available on Apple platforms, which do not implement `pthread_mutex_timedlock`.
     ///

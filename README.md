@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/mdspan/posix-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/mdspan/posix-sync/actions/workflows/ci.yml)
 
-Idiomatic Rust interface for POSIX synchronisation primitives.
+Idiomatic Rust interface for POSIX synchronization primitives.
 
-Every primitive comes in two flavours:
+Every primitive comes in two flavors:
 
 - An **owned** variant, which allocates the underlying pthread object, destroys it on
   drop as long as nothing still holds it, and can be used entirely from safe code
@@ -63,22 +63,22 @@ below). They are non-poisoning, and therefore `!UnwindSafe` and `!RefUnwindSafe`
 
 |                          | Linux (glibc) | Linux (musl) | FreeBSD | DragonFly | NetBSD | OpenBSD | macOS/iOS | Android |
 |--------------------------|---------------|--------------|---------|-----------|--------|---------|-----------|---------|
-| Process sharing          | ✅            | ✅           | ✅      | ❌        | ❌     | ❌      | ✅        | ✅      |
-| Robust mutexes           | ✅            | ✅           | ✅      | ❌        | ❌     | ❌      | ❌        | ❌      |
-| Timed mutex locking      | ✅            | ✅           | ✅      | ✅        | ✅     | ✅      | ❌        | ✅      |
-| Timed rwlock locking     | ✅            | ✅           | ✅      | ✅        | ✅     | ✅      | ❌        | ✅      |
-| Condvar clock selection  | ✅            | ✅           | ✅      | ✅        | ✅     | ✅      | ❌        | ✅      |
-| Priority inheritance     | ✅            | ✅           | ✅      | ✅        | ❌     | ✅      | ✅        | ✅      |
-| Priority ceilings        | ✅            | ❌           | ✅      | ✅        | ✅     | ✅      | ✅        | ❌      |
-| Reader/writer preference | ✅            | ❌           | ❌      | ❌        | ❌     | ❌      | ❌        | ❌      |
-| Barriers                 | ✅            | ✅           | ✅      | ✅        | ✅     | ✅      | ❌        | ✅      |
+| Process sharing          | ✓             | ✓            | ✓       | ✗         | ✗      | ✗       | ✓         | ✓       |
+| Robust mutexes           | ✓             | ✓            | ✓       | ✗         | ✗      | ✗       | ✗         | ✗       |
+| Timed mutex locking      | ✓             | ✓            | ✓       | ✓         | ✓      | ✓       | ✗         | ✓       |
+| Timed rwlock locking     | ✓             | ✓            | ✓       | ✓         | ✓      | ✓       | ✗         | ✓       |
+| Condvar clock selection  | ✓             | ✓            | ✓       | ✓         | ✓      | ✓       | ✗         | ✓       |
+| Priority inheritance     | ✓             | ✓            | ✓       | ✓         | ✗      | ✓       | ✓         | ✓       |
+| Priority ceilings        | ✓             | ✗            | ✓       | ✓         | ✓      | ✓       | ✓         | ✗       |
+| Reader/writer preference | ✓             | ✗            | ✗       | ✗         | ✗      | ✗       | ✗         | ✗       |
+| Barriers                 | ✓             | ✓            | ✓       | ✓         | ✓      | ✓       | ✗         | ✓       |
 
 - **Process sharing**: `with_sharing` and the `*Sharing` enums on all four builders.
   DragonFly, NetBSD and OpenBSD never implemented the option: OpenBSD's libraries export
   no pshared functions for mutexes or condvars at all, NetBSD's return `ENOSYS` for the
-  shared value, and DragonFly's reject it with `EINVAL`. Where the row is ❌,
+  shared value, and DragonFly's reject it with `EINVAL`. Where the row is ✗,
   `with_sharing` and the `*Sharing` enums do not exist, so the locks there can only
-  synchronise threads within a single process, never two processes over shared memory.
+  synchronize threads within a single process, never two processes over shared memory.
 - **Robust mutexes**: macOS/iOS, NetBSD, OpenBSD and Android do not implement robust
   mutexes at all. DragonFly declares the robust functions but does not define them.
 - **Timed mutex locking**: macOS/iOS has no `pthread_mutex_timedlock`.

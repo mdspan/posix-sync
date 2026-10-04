@@ -149,7 +149,7 @@ fn robust_mutex_returns_correct_guards() -> Result<()> {
         RobustGuardContainer::Standard(_) => return Err(anyhow!("Unexpected guard.")),
     }
 
-    // Now that the mutex has been marked consistent its behaviour is back to normal.
+    // Now that the mutex has been marked consistent its behavior is back to normal.
     assert!(!unsafe { mtx.lock()? }.is_indeterminate());
 
     // A child that unlocks before exiting is not an owner death at all.
