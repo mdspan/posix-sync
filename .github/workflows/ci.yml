@@ -74,7 +74,7 @@ jobs:
       # runners that report STIBP always-on mode, and 1.6.0 stopped it starting a job
       # before its network was up.
       - name: Boot ${{ matrix.os.name }} ${{ matrix.os.version }}
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@v1.7.0
         with:
           operating_system: ${{ matrix.os.name }}
           architecture: x86-64
